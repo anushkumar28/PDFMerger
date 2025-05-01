@@ -152,3 +152,33 @@ button:hover {
     border-radius: 4px;
     color: #d8000c;
 }
+
+/* Add these styles for the filename input */
+
+.filename-container {
+    margin: 20px 0;
+}
+
+.filename-input-group {
+    display: flex;
+    align-items: center;
+    margin-top: 5px;
+}
+
+#output-filename {
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px 0 0 4px;
+    font-size: 16px;
+    flex: 1;
+}
+
+.filename-extension {
+    padding: 8px 12px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    font-size: 16px;
+    color: #555;
+}

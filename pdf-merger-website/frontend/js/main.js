@@ -3,6 +3,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const uploadForm = document.getElementById('upload-form');
     const fileInput = document.getElementById('pdf-files');
+    const outputFilenameInput = document.getElementById('output-filename'); // New line
     const mergeButton = document.getElementById('merge-button');
     const downloadLink = document.getElementById('download-link');
     const fileListContainer = document.createElement('div');
@@ -64,8 +65,14 @@ document.addEventListener('DOMContentLoaded', function() {
         for (let i = 0; i < files.length; i++) {
             formData.append('files', files[i]);
         }
+        
+        // Add the custom filename to the form data if provided
+        const customFilename = outputFilenameInput.value.trim();
+        if (customFilename) {
+            formData.append('output_filename', customFilename);
+        }
 
-        // Change endpoint from /merge to /upload to match your server configuration
+        // Send the request to the server
         fetch('/upload', {
             method: 'POST',
             body: formData

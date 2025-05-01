@@ -40,12 +40,6 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             console.log('Success:', data);
-            // Create download link
-            resultDiv.innerHTML = `
-                <p>PDFs merged successfully!</p>
-                <a href="${data.download_link}" download="merged_document.pdf" class="download-btn">
-                    Download Merged PDF
-                </a>`;
         })
         .catch(error => {
             console.error('Error:', error);

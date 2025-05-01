@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, after_this_request
 from flask_cors import CORS
 import os
 import traceback
@@ -24,6 +24,9 @@ try:
 except Exception as e:
     print(f"ERROR: Cannot write to upload directory: {str(e)}")
     # This will help identify permission issues at startup
+
+# Track files to clean up
+uploaded_file_tracker = {}
 
 @app.route('/')
 def index():
@@ -80,52 +83,68 @@ def upload_files():
             print("No valid PDF files were uploaded")
             return jsonify({'error': 'No valid PDF files were uploaded'}), 400
 
-        # Generate a unique output filename
-        import uuid
-        output_filename = f"merged_document_{uuid.uuid4().hex[:8]}.pdf"
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+        # Get custom filename if provided or generate a default one
+        output_filename = None
+        if 'output_filename' in request.form and request.form['output_filename'].strip():
+            output_filename = request.form['output_filename'].strip()
+            print(f"Custom filename provided: {output_filename}")
+        else:
+            # Generate a unique output filename
+            import uuid
+            output_filename = f"merged_document_{uuid.uuid4().hex[:8]}"
         
-        print(f"Attempting to merge PDFs to: {output_path}")
+        # Make sure it has .pdf extension
+        if not output_filename.lower().endswith('.pdf'):
+            output_filename += '.pdf'
+            
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'merged_document.pdf') # Use a default base name
         
-        merge_result = merge_pdfs(pdf_paths, output_path)
+        print(f"Attempting to merge PDFs to: {output_path} with custom name: {output_filename}")
+
+        # Change this line to pass the output_filename parameter
+        merge_result = merge_pdfs(pdf_paths, output_path, output_filename)
         print(f"Merge result: {merge_result}")
         
-        if merge_result:
-            download_link = f'/download/{output_filename}'
+        if merge_result['success']:
+            merged_filename = os.path.basename(merge_result["path"])
+            download_link = f'/download/{merged_filename}'
+            
+            # Store files to clean up later
+            uploaded_file_tracker[merged_filename] = {
+                'input_paths': pdf_paths,
+                'merged_path': merge_result["path"]
+            }
+            
             print(f"Success! Download link: {download_link}")
             return jsonify({
                 'message': 'Files merged successfully', 
                 'download_link': download_link
             }), 200
         else:
-            print("Error merging files")
-            return jsonify({'error': 'Error merging files'}), 500
+            # Clean up input files on failure
+            for path in pdf_paths:
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                        print(f"Removed uploaded file: {path}")
+                except Exception as e:
+                    print(f"Error removing file {path}: {str(e)}")
+                    
+            print(f"Error merging files: {merge_result['error']}")
+            return jsonify({'error': merge_result['error'] or 'Error merging files'}), 500
     except Exception as e:
+        # Clean up any uploaded files on exception
+        for path in pdf_paths if 'pdf_paths' in locals() else []:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    print(f"Removed uploaded file: {path}")
+            except Exception as remove_err:
+                print(f"Error removing file {path}: {str(remove_err)}")
+                
         print(f"Exception in upload_files: {str(e)}")
         traceback.print_exc()
         return jsonify({'error': f'Server error: {str(e)}'}), 500
-
-@app.route('/merge', methods=['POST'])
-def merge_files():
-    if 'files' not in request.files:
-        return jsonify({'error': 'No files part'}), 400
-
-    files = request.files.getlist('files')
-    pdf_paths = []
-
-    for file in files:
-        if file and file.filename.endswith('.pdf'):
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-            file.save(file_path)
-            pdf_paths.append(file_path)
-        else:
-            return jsonify({'error': 'Only PDF files are allowed'}), 400
-
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'merged_document.pdf')
-    if merge_pdfs(pdf_paths, output_path):
-        return jsonify({'message': 'Files merged successfully', 'download_link': f'/download/{os.path.basename(output_path)}'}), 200
-    else:
-        return jsonify({'error': 'Error merging files'}), 500
 
 # Also fix the download route to handle potential errors
 @app.route('/download/<filename>')
@@ -135,6 +154,36 @@ def download_file(filename):
         if not os.path.exists(file_path):
             print(f"File not found: {file_path}")
             return jsonify({'error': 'File not found'}), 404
+        
+        # Get files to clean up after the response
+        files_to_clean = uploaded_file_tracker.get(filename, {})
+        
+        @after_this_request
+        def clean_up_files(response):
+            if filename in uploaded_file_tracker:
+                # Clean up input files
+                for path in files_to_clean.get('input_paths', []):
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                            print(f"Removed uploaded file: {path}")
+                    except Exception as e:
+                        print(f"Error removing file {path}: {str(e)}")
+                
+                # Clean up merged file
+                merged_path = files_to_clean.get('merged_path')
+                if merged_path and os.path.exists(merged_path):
+                    try:
+                        os.remove(merged_path)
+                        print(f"Removed merged file: {merged_path}")
+                    except Exception as e:
+                        print(f"Error removing merged file {merged_path}: {str(e)}")
+                
+                # Remove from tracker
+                uploaded_file_tracker.pop(filename, None)
+                print(f"Cleaned up files for {filename}")
+            
+            return response
         
         print(f"Serving file: {file_path}")
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)

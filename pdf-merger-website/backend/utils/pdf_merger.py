@@ -2,20 +2,36 @@ from PyPDF2 import PdfMerger
 import os
 import traceback
 
-def merge_pdfs(input_paths, output_path):
+def merge_pdfs(input_paths, output_path, output_filename=None):
     """
     Merge multiple PDF files into a single PDF file
     
     Args:
         input_paths (list): List of paths to PDF files to merge
         output_path (str): Path where the merged PDF should be saved
+        output_filename (str, optional): Custom filename for the merged PDF.
+                                        If provided, will override the filename portion of output_path
     
     Returns:
-        bool: True if successful, False otherwise
+        dict: Dictionary containing:
+            - 'success': bool indicating if merge was successful
+            - 'path': Path to the merged file if successful
+            - 'error': Error message if unsuccessful
     """
     try:
         print(f"Starting to merge PDFs. Input paths: {input_paths}")
-        print(f"Output path: {output_path}")
+        print(f"Original output path: {output_path}")
+        
+        # Handle custom filename if provided
+        if output_filename:
+            # Ensure filename has .pdf extension
+            if not output_filename.lower().endswith('.pdf'):
+                output_filename += '.pdf'
+                
+            # Replace the filename portion of the output path
+            output_dir = os.path.dirname(output_path)
+            output_path = os.path.join(output_dir, output_filename)
+            print(f"Custom filename provided. New output path: {output_path}")
         
         # Validate input paths
         valid_paths = []
@@ -37,7 +53,7 @@ def merge_pdfs(input_paths, output_path):
                 
         if not valid_paths:
             print("Error: No valid PDF files to merge!")
-            return False
+            return {'success': False, 'error': 'No valid PDF files to merge', 'path': None}
             
         print(f"Valid paths for merging: {valid_paths}")
         
@@ -62,12 +78,13 @@ def merge_pdfs(input_paths, output_path):
         # Verify the output file was created
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             print(f"Successfully merged {len(valid_paths)} PDFs into {output_path}")
-            return True
+            return {'success': True, 'path': output_path, 'error': None}
         else:
             print(f"Error: Output file {output_path} was not created or is empty")
-            return False
+            return {'success': False, 'error': 'Output file was not created or is empty', 'path': None}
             
     except Exception as e:
-        print(f"Error merging PDFs: {str(e)}")
+        error_msg = f"Error merging PDFs: {str(e)}"
+        print(error_msg)
         traceback.print_exc()
-        return False
+        return {'success': False, 'error': error_msg, 'path': None}

@@ -12,6 +12,21 @@
         <form id="upload-form" enctype="multipart/form-data">
             <label for="pdf-files">Upload PDF files:</label>
             <input type="file" id="pdf-files" name="pdf-files" accept="application/pdf" multiple required>
+            
+            <!-- Add filename input field -->
+            <div class="filename-container">
+                <label for="output-filename">Name your merged file:</label>
+                <div class="filename-input-group">
+                    <input 
+                        type="text" 
+                        id="output-filename" 
+                        name="output-filename" 
+                        placeholder="merged_document"
+                    >
+                    <span class="filename-extension">.pdf</span>
+                </div>
+            </div>
+            
             <button type="submit">Merge PDFs</button>
         </form>
         <div id="result"></div>
