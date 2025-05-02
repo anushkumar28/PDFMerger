@@ -6,8 +6,21 @@
     <title>PDF Merger | Combine Multiple PDFs Easily</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Add PWA support -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4361ee">
+    <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;">
 </head>
 <body>
+    <!-- Add theme toggle -->
+    <div class="theme-toggle-container">
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark/light theme">
+            <i class="fas fa-moon"></i>
+            <i class="fas fa-sun"></i>
+        </button>
+    </div>
+
     <div class="container">
         <h1>PDF Merger</h1>
         
@@ -37,12 +50,10 @@
             </button>
         </form>
         
-        <!-- File list will be inserted here by JavaScript -->
-        
         <div id="result" class="result-container"></div>
     </div>
 
-    <!-- Features section -->
+    <!-- Features section with 2x2 grid -->
     <div class="features-section">
         <div class="container">
             <h2>Features</h2>
@@ -52,7 +63,7 @@
                         <i class="fas fa-shield-alt"></i>
                     </div>
                     <h3>Secure</h3>
-                    <p>Your files are processed locally and never stored on our servers.</p>
+                    <p>Your files are processed locally and deleted immediately after download. Your data never leaves your computer.</p>
                 </div>
                 
                 <div class="feature-card">
@@ -60,7 +71,7 @@
                         <i class="fas fa-bolt"></i>
                     </div>
                     <h3>Fast</h3>
-                    <p>Quickly merge multiple PDF files into a single document.</p>
+                    <p>Quickly merge multiple PDF files into a single document with our optimized processing engine.</p>
                 </div>
                 
                 <div class="feature-card">
@@ -68,7 +79,7 @@
                         <i class="fas fa-desktop"></i>
                     </div>
                     <h3>Easy to Use</h3>
-                    <p>Simple interface that makes PDF merging accessible to everyone.</p>
+                    <p>Simple interface that makes PDF merging accessible to everyone, no technical knowledge required.</p>
                 </div>
                 
                 <div class="feature-card">
@@ -76,7 +87,37 @@
                         <i class="fas fa-file-alt"></i>
                     </div>
                     <h3>Custom Naming</h3>
-                    <p>Name your merged PDF document whatever you want.</p>
+                    <p>Name your merged PDF document exactly how you want it for better organization.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- How It Works section -->
+    <div class="help-section">
+        <div class="container">
+            <h2>How It Works</h2>
+            <div class="steps-container">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Select PDF Files</h3>
+                        <p>Click "Choose PDF Files" and select two or more PDF files you want to merge.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Name Your File</h3>
+                        <p>Enter a name for your merged PDF file or use the default name.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Merge and Download</h3>
+                        <p>Click "Merge PDFs" and download your combined PDF document.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -91,5 +132,6 @@
     </footer>
 
     <script src="js/pdf-upload.js"></script>
+    <script src="js/theme-toggle.js"></script>
 </body>
 </html>

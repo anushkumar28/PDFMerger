@@ -90,23 +90,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
             } else {
                 // Error case
-                resultContainer.innerHTML = `
-                    <div class="error-message">
-                        <h3>Error Merging PDFs</h3>
-                        <p>${data.error || 'An unknown error occurred'}</p>
-                    </div>
-                `;
+                showError(data.error || 'An unknown error occurred');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            resultContainer.innerHTML = `
-                <div class="error-message">
-                    <h3>Error Merging PDFs</h3>
-                    <p>An unexpected error occurred. Please try again later.</p>
-                    <p class="error-details">${error.message}</p>
-                </div>
-            `;
+            showError('An unexpected error occurred. Please try again later.');
         });
+    });
+
+    // Use safer DOM methods instead of innerHTML
+    function showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-container';
+        
+        const errorIcon = document.createElement('div');
+        errorIcon.className = 'error-icon';
+        errorIcon.textContent = '!';
+        
+        const heading = document.createElement('h3');
+        heading.textContent = 'Error Merging PDFs';
+        
+        const paragraph = document.createElement('p');
+        paragraph.textContent = message || 'Something went wrong. Please try again.';
+        
+        const button = document.createElement('button');
+        button.className = 'retry-button';
+        button.textContent = 'Try Again';
+        button.addEventListener('click', () => location.reload());
+        
+        errorDiv.appendChild(errorIcon);
+        errorDiv.appendChild(heading);
+        errorDiv.appendChild(paragraph);
+        errorDiv.appendChild(button);
+        
+        resultContainer.innerHTML = '';
+        resultContainer.appendChild(errorDiv);
+    }
+
+    // Add keyboard navigation support
+    const focusableElements = document.querySelectorAll('button, a, input');
+    focusableElements.forEach(element => {
+        if (!element.hasAttribute('tabindex')) {
+            element.setAttribute('tabindex', '0');
+        }
     });
 });

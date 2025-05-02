@@ -3,12 +3,30 @@ from flask_cors import CORS
 import os
 import traceback
 from backend.utils.pdf_merger import merge_pdfs
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import logging
 
 app = Flask(__name__, static_folder='frontend')
 CORS(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Fix the Limiter initialization
+limiter = Limiter(
+    get_remote_address,  # Remove the key_func= prefix
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
+# Add structured error handling with proper logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='pdf_merger.log'
+)
+logger = logging.getLogger('pdf_merger')
 
 # At the start of your server.py file
 try:
@@ -20,9 +38,9 @@ try:
     with open(test_file, 'w') as f:
         f.write('test')
     os.remove(test_file)
-    print(f"Upload directory is writable: {app.config['UPLOAD_FOLDER']}")
+    logger.info(f"Upload directory is writable: {app.config['UPLOAD_FOLDER']}")
 except Exception as e:
-    print(f"ERROR: Cannot write to upload directory: {str(e)}")
+    logger.error(f"ERROR: Cannot write to upload directory: {str(e)}", exc_info=True)
     # This will help identify permission issues at startup
 
 # Track files to clean up
@@ -36,58 +54,67 @@ def index():
 def serve_static(path):
     return send_from_directory('frontend', path)
 
+# Implement more secure file validation
+def is_safe_pdf(file_path):
+    """Validate if a file is a real PDF and not malicious"""
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(5)
+            # Check for PDF magic number
+            return header == b'%PDF-'
+    except:
+        return False
+
 @app.route('/upload', methods=['POST'])
+@limiter.limit("10 per minute")
 def upload_files():
     try:
-        print("Files in request:", list(request.files.keys()))
+        logger.info("Files in request: %s", list(request.files.keys()))
         
         if 'files' not in request.files:
-            print("No 'files' part in request")
+            logger.info("No 'files' part in request")
             return jsonify({'error': 'No files part'}), 400
 
         files = request.files.getlist('files')
-        print(f"Number of files received: {len(files)}")
+        logger.info("Number of files received: %d", len(files))
         
         if len(files) < 2:
-            print("Need at least 2 files to merge")
+            logger.info("Need at least 2 files to merge")
             return jsonify({'error': 'Need at least 2 PDF files to merge'}), 400
         
         pdf_paths = []
 
         for file in files:
             if file and file.filename.endswith('.pdf'):
-                filename = file.filename
-                # Use a more secure filename
-                filename = os.path.basename(filename)
-                
+                filename = os.path.basename(file.filename)
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
                 
-                print(f"Saving file to: {file_path}")
-                try:
-                    file.save(file_path)
-                    # Verify the file was saved
-                    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                        pdf_paths.append(file_path)
-                        print(f"Successfully saved file: {file_path}")
-                    else:
-                        print(f"Failed to save file or file is empty: {file_path}")
-                        return jsonify({'error': f'Failed to save file: {filename}'}), 500
-                except Exception as save_err:
-                    print(f"Error saving file {filename}: {str(save_err)}")
-                    return jsonify({'error': f'Error saving file {filename}: {str(save_err)}'}), 500
+                # Validate PDF after saving
+                if not is_safe_pdf(file_path):
+                    os.remove(file_path)  # Remove potentially malicious file
+                    return jsonify({'error': 'Invalid or potentially unsafe PDF file'}), 400
+                
+                # Verify the file was saved
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    pdf_paths.append(file_path)
+                    logger.info("Successfully saved file: %s", file_path)
+                else:
+                    logger.info("Failed to save file or file is empty: %s", file_path)
+                    return jsonify({'error': f'Failed to save file: {filename}'}), 500
             else:
-                print(f"Invalid file: {file.filename if file else 'None'}")
+                logger.info("Invalid file: %s", file.filename if file else 'None')
                 return jsonify({'error': 'Only PDF files are allowed'}), 400
 
         if not pdf_paths or len(pdf_paths) < 2:
-            print("No valid PDF files were uploaded")
+            logger.info("No valid PDF files were uploaded")
             return jsonify({'error': 'No valid PDF files were uploaded'}), 400
 
         # Get custom filename if provided or generate a default one
         output_filename = None
         if 'output_filename' in request.form and request.form['output_filename'].strip():
             output_filename = request.form['output_filename'].strip()
-            print(f"Custom filename provided: {output_filename}")
+            logger.info("Custom filename provided: %s", output_filename)
         else:
             # Generate a unique output filename
             import uuid
@@ -99,11 +126,11 @@ def upload_files():
             
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'merged_document.pdf') # Use a default base name
         
-        print(f"Attempting to merge PDFs to: {output_path} with custom name: {output_filename}")
+        logger.info("Attempting to merge PDFs to: %s with custom name: %s", output_path, output_filename)
 
         # Change this line to pass the output_filename parameter
         merge_result = merge_pdfs(pdf_paths, output_path, output_filename)
-        print(f"Merge result: {merge_result}")
+        logger.info("Merge result: %s", merge_result)
         
         if merge_result['success']:
             merged_filename = os.path.basename(merge_result["path"])
@@ -115,7 +142,7 @@ def upload_files():
                 'merged_path': merge_result["path"]
             }
             
-            print(f"Success! Download link: {download_link}")
+            logger.info("Success! Download link: %s", download_link)
             return jsonify({
                 'message': 'Files merged successfully', 
                 'download_link': download_link
@@ -126,11 +153,11 @@ def upload_files():
                 try:
                     if os.path.exists(path):
                         os.remove(path)
-                        print(f"Removed uploaded file: {path}")
+                        logger.info("Removed uploaded file: %s", path)
                 except Exception as e:
-                    print(f"Error removing file {path}: {str(e)}")
+                    logger.error(f"Error removing file {path}: {str(e)}", exc_info=True)
                     
-            print(f"Error merging files: {merge_result['error']}")
+            logger.info("Error merging files: %s", merge_result['error'])
             return jsonify({'error': merge_result['error'] or 'Error merging files'}), 500
     except Exception as e:
         # Clean up any uploaded files on exception
@@ -138,11 +165,11 @@ def upload_files():
             try:
                 if os.path.exists(path):
                     os.remove(path)
-                    print(f"Removed uploaded file: {path}")
+                    logger.info("Removed uploaded file: %s", path)
             except Exception as remove_err:
-                print(f"Error removing file {path}: {str(remove_err)}")
+                logger.error(f"Error removing file {path}: {str(remove_err)}", exc_info=True)
                 
-        print(f"Exception in upload_files: {str(e)}")
+        logger.error(f"Exception in upload_files: {str(e)}", exc_info=True)
         traceback.print_exc()
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
@@ -152,7 +179,7 @@ def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
+            logger.info("File not found: %s", file_path)
             return jsonify({'error': 'File not found'}), 404
         
         # Get files to clean up after the response
@@ -166,32 +193,56 @@ def download_file(filename):
                     try:
                         if os.path.exists(path):
                             os.remove(path)
-                            print(f"Removed uploaded file: {path}")
+                            logger.info("Removed uploaded file: %s", path)
                     except Exception as e:
-                        print(f"Error removing file {path}: {str(e)}")
+                        logger.error(f"Error removing file {path}: {str(e)}", exc_info=True)
                 
                 # Clean up merged file
                 merged_path = files_to_clean.get('merged_path')
                 if merged_path and os.path.exists(merged_path):
                     try:
                         os.remove(merged_path)
-                        print(f"Removed merged file: {merged_path}")
+                        logger.info("Removed merged file: %s", merged_path)
                     except Exception as e:
-                        print(f"Error removing merged file {merged_path}: {str(e)}")
+                        logger.error(f"Error removing merged file {merged_path}: {str(e)}", exc_info=True)
                 
                 # Remove from tracker
                 uploaded_file_tracker.pop(filename, None)
-                print(f"Cleaned up files for {filename}")
+                logger.info("Cleaned up files for %s", filename)
             
             return response
         
-        print(f"Serving file: {file_path}")
+        logger.info("Serving file: %s", file_path)
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
     except Exception as e:
-        print(f"Exception in download_file: {str(e)}")
+        logger.error(f"Exception in download_file: {str(e)}", exc_info=True)
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Error downloading file: {str(e)}'}), 500
+
+# Implement file cleanup with secure deletion
+def secure_delete(file_path):
+    """More secure file deletion by overwriting before deleting"""
+    if os.path.exists(file_path):
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        # Overwrite with random data
+        with open(file_path, 'wb') as f:
+            f.write(os.urandom(file_size))
+            
+        # Delete the file
+        os.remove(file_path)
+        logger.info(f"Securely deleted {file_path}")
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;"
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)

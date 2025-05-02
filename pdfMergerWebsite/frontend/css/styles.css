@@ -13,6 +13,29 @@
     --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     --radius: 8px;
     --transition: all 0.3s ease;
+    --accent-color: #f72585;
+    --panel-bg: #f1f5f9;
+    --icon-bg: rgba(67, 97, 238, 0.1);
+    --input-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+    --primary-color: #6366f1;
+    --primary-dark: #4f46e5;
+    --secondary-color: #8b5cf6;
+    --accent-color: #ec4899;
+    --bg-color: #111827;
+    --card-bg: #1f2937;
+    --text-color: #f9fafb;
+    --text-light: #9ca3af;
+    --border-color: #374151;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --input-bg: #374151;
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --warning-color: #f59e0b;
+    --panel-bg: #1e293b;
+    --icon-bg: rgba(99, 102, 241, 0.2);
 }
 
 * {
@@ -28,6 +51,8 @@ body {
     background: var(--bg-color);
     padding: 0;
     margin: 0;
+    min-height: 100vh;
+    transition: background-color 0.3s ease;
 }
 
 header {
@@ -78,11 +103,16 @@ form {
 
 #upload-form {
     background-color: var(--card-bg);
-    border-radius: var(--radius);
+    border-radius: 12px;
     padding: 2rem;
     box-shadow: var(--shadow);
     margin-bottom: 2rem;
     border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+
+#upload-form:hover {
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
 }
 
 label {
@@ -100,19 +130,27 @@ input[type="file"] {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
-    padding: 1rem;
-    border-radius: var(--radius);
+    padding: 1.2rem;
+    border-radius: 8px;
     cursor: pointer;
-    transition: var(--transition);
+    transition: all 0.3s ease;
     margin-bottom: 1.5rem;
     text-align: center;
     font-weight: 500;
+    position: relative;
+    overflow: hidden;
 }
 
 .file-input-label:hover {
-    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    animation: pulse 1.5s infinite;
+}
+
+.file-input-label:active {
+    transform: translateY(0);
 }
 
 .file-input-icon {
@@ -139,13 +177,13 @@ button:hover {
 }
 
 .file-list-container {
-    margin-top: 1rem;
     background-color: var(--card-bg);
-    border-radius: var(--radius);
+    border-radius: 12px;
     padding: 1.5rem;
     box-shadow: var(--shadow);
     margin-bottom: 2rem;
     border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
     max-height: 400px;
     overflow-y: auto;
     display: none;
@@ -179,16 +217,16 @@ button:hover {
 .file-item {
     display: flex;
     align-items: center;
-    padding: 0.75rem;
-    border-radius: var(--radius);
+    padding: 1rem;
+    border-radius: 8px;
     margin-bottom: 0.75rem;
-    background-color: rgba(67, 97, 238, 0.05);
+    background-color: var(--icon-bg);
     border: 1px solid var(--border-color);
-    transition: var(--transition);
+    transition: all 0.3s ease;
 }
 
 .file-item:hover {
-    background-color: rgba(67, 97, 238, 0.1);
+    transform: translateX(5px);
 }
 
 .file-icon {
@@ -298,6 +336,7 @@ button:hover {
     align-items: center;
     justify-content: center;
     font-size: 2rem;
+    animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .error-message {
@@ -328,6 +367,7 @@ button:hover {
     align-items: center;
     justify-content: center;
     font-size: 2rem;
+    animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .download-button {
@@ -341,12 +381,36 @@ button:hover {
     margin-top: 1rem;
     font-weight: 600;
     transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
 }
 
 .download-button:hover {
     background-color: var(--primary-dark);
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.download-button:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    transition: width 0.3s ease;
+    z-index: -1;
+}
+
+.download-button:hover:before {
+    width: 100%;
+}
+
+.download-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 7px 15px rgba(0, 0, 0, 0.2);
 }
 
 .download-icon {
@@ -391,6 +455,12 @@ button:hover {
     border: 2px solid var(--border-color);
     border-radius: var(--radius);
     overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.filename-input-group:focus-within {
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.3);
 }
 
 #output-filename {
@@ -399,6 +469,9 @@ button:hover {
     border: none;
     outline: none;
     font-size: 1rem;
+    color: var(--text-color);
+    background-color: var(--input-bg);
+    transition: all 0.3s ease;
 }
 
 .filename-extension {
@@ -406,27 +479,44 @@ button:hover {
     color: var(--text-color);
     padding: 0.75rem 1rem;
     font-weight: 500;
+    transition: all 0.3s ease;
 }
 
 /* Submit Button */
 button[type="submit"] {
     display: block;
     width: 100%;
-    background-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
     border: none;
-    border-radius: var(--radius);
-    padding: 1rem;
-    font-size: 1rem;
+    border-radius: 8px;
+    padding: 1.2rem;
+    font-size: 1.1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: var(--transition);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+button[type="submit"]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.7s ease;
 }
 
 button[type="submit"]:hover {
-    background-color: var(--primary-dark);
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+button[type="submit"]:hover::after {
+    left: 100%;
 }
 
 /* Notification */
@@ -510,8 +600,9 @@ button[type="submit"]:hover {
 
 /* Features Section */
 .features-section {
-    background-color: #f1f5f9;
-    padding: 3rem 0;
+    background-color: var(--panel-bg);
+    padding: 4rem 0;
+    transition: background-color 0.3s ease;
 }
 
 .features-section h2 {
@@ -522,35 +613,64 @@ button[type="submit"]:hover {
 
 .features-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(2, 1fr); /* 2 columns by default */
     gap: 1.5rem;
+    margin: 0 auto;
+    max-width: 1200px;
+}
+
+@media (max-width: 768px) {
+    .features-grid {
+        grid-template-columns: 1fr; /* Stack on mobile */
+    }
+}
+
+@media (min-width: 1200px) {
+    /* Uncomment this if you prefer 4 in a row on very large screens
+    .features-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    */
 }
 
 .feature-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
     background-color: var(--card-bg);
-    border-radius: var(--radius);
-    padding: 1.5rem;
+    border-radius: 12px;
+    padding: 2rem;
     box-shadow: var(--shadow);
     text-align: center;
-    transition: var(--transition);
+    transition: all 0.3s ease;
+    border: 1px solid var(--border-color);
 }
 
 .feature-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    transform: translateY(-10px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
 }
 
 .feature-icon {
-    width: 60px;
-    height: 60px;
-    background-color: rgba(67, 97, 238, 0.1);
+    width: 70px;
+    height: 70px;
+    background-color: var(--icon-bg);
     color: var(--primary-color);
     font-size: 1.5rem;
     border-radius: 50%;
-    margin: 0 auto 1rem;
+    margin: 0 auto 1.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.feature-card:hover .feature-icon {
+    transform: rotate(360deg);
+    background-color: var(--primary-color);
+    color: white;
 }
 
 .feature-card h3 {
@@ -581,4 +701,219 @@ button[type="submit"]:hover {
     .features-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* Add visual progress indicator */
+.progress-container {
+    width: 100%;
+    height: 8px;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    margin: 1rem 0;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* Add dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-color: #121212;
+        --card-bg: #1e1e1e;
+        --text-color: #e0e0e0;
+        --text-light: #b0b0b0;
+        --border-color: #333333;
+    }
+    
+    .file-icon {
+        background-color: #2a2a2a;
+    }
+    
+    .filename-extension {
+        background-color: #2a2a2a;
+    }
+}
+
+/* Animation for theme switch */
+.theme-transition {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Theme toggle styles */
+.theme-toggle-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+}
+
+.theme-toggle {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow);
+}
+
+.theme-toggle:hover {
+    transform: rotate(15deg);
+}
+
+.theme-toggle .fa-sun {
+    display: none;
+}
+
+.theme-toggle .fa-moon {
+    display: block;
+}
+
+[data-theme="dark"] .theme-toggle .fa-sun {
+    display: block;
+}
+
+[data-theme="dark"] .theme-toggle .fa-moon {
+    display: none;
+}
+
+/* Add these to your CSS file */
+
+/* File upload animation */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Loading animation enhancement */
+.loading-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(67, 97, 238, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+}
+
+/* Success and Error animations */
+@keyframes scaleIn {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.success-icon, .error-icon {
+  animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Theme toggle animation */
+@keyframes rotate {
+  0% { transform: rotate(0); }
+  100% { transform: rotate(360deg); }
+}
+
+.theme-toggle.rotate {
+  animation: rotate 0.5s ease-in-out;
+}
+
+/* Button effects */
+.download-button {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  text-decoration: none;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  margin-top: 1.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.download-button:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  transition: width 0.3s ease;
+  z-index: -1;
+}
+
+.download-button:hover:before {
+  width: 100%;
+}
+
+.download-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 7px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* How It Works section */
+.help-section {
+  background-color: var(--panel-bg);
+  padding: 3rem 0;
+  margin-top: 2rem;
+}
+
+.steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.step:hover {
+  transform: translateX(5px);
+}
+
+.step-number {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin-right: 1.5rem;
+  flex-shrink: 0;
+}
+
+.step-content h3 {
+  margin-bottom: 0.5rem;
+}
+
+/* File item ghost for drag and drop */
+.file-item-ghost {
+  opacity: 0.5;
+  background-color: var(--border-color);
 }

@@ -4,7 +4,11 @@ import traceback
 
 def merge_pdfs(input_paths, output_path, output_filename=None):
     """
-    Merge multiple PDF files into a single PDF file
+    Merge multiple PDF files into a single PDF file.
+    
+    This function validates all input paths, checks for file readability,
+    and combines them into a single output PDF. It performs clean error
+    handling and returns a structured response.
     
     Args:
         input_paths (list): List of paths to PDF files to merge
@@ -17,6 +21,14 @@ def merge_pdfs(input_paths, output_path, output_filename=None):
             - 'success': bool indicating if merge was successful
             - 'path': Path to the merged file if successful
             - 'error': Error message if unsuccessful
+            
+    Raises:
+        No exceptions are raised as they're caught internally and returned in the result dict.
+        
+    Example:
+        >>> result = merge_pdfs(['file1.pdf', 'file2.pdf'], 'output/merged.pdf')
+        >>> if result['success']:
+        >>>     print(f"Merged PDF saved to {result['path']}")
     """
     try:
         print(f"Starting to merge PDFs. Input paths: {input_paths}")

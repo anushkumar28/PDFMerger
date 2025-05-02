@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const fileExtension = file.name.split('.').pop().toLowerCase();
             
             html += `
-                <li class="file-item">
+                <li class="file-item" tabindex="0">
                     <div class="file-icon pdf-icon">
                         <span class="file-extension">.${fileExtension}</span>
                     </div>
@@ -53,15 +53,48 @@ document.addEventListener('DOMContentLoaded', function() {
         return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
+    // Validate files before upload
+    function validateFiles(files) {
+        const errors = [];
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+        
+        if (files.length < 2) {
+            errors.push('Please select at least two PDF files.');
+            return errors;
+        }
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            
+            // Check file type
+            if (!file.type || file.type !== 'application/pdf') {
+                errors.push(`"${file.name}" is not a PDF file.`);
+            }
+            
+            // Check file size
+            if (file.size > MAX_FILE_SIZE) {
+                errors.push(`"${file.name}" exceeds the 10MB file size limit.`);
+            }
+            
+            // Check for empty files
+            if (file.size === 0) {
+                errors.push(`"${file.name}" is empty.`);
+            }
+        }
+        
+        return errors;
+    }
+    
     uploadForm.addEventListener('submit', function(event) {
         event.preventDefault();
         const files = fileInput.files;
-
-        if (files.length < 2) {
-            showNotification('Please select at least two PDF files to merge.', 'error');
+        
+        const validationErrors = validateFiles(files);
+        if (validationErrors.length > 0) {
+            showNotification(validationErrors.join('<br>'), 'error');
             return;
         }
-
+        
         // Create loading indicator
         resultDiv.innerHTML = `
             <div class="loading-container">
@@ -106,6 +139,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
             
+            // Track successful merge event
+            trackEvent('PDF', 'Merge', 'Success');
+            
             // Clear file input for next merge
             fileInput.value = '';
             fileListContainer.innerHTML = '';
@@ -115,6 +151,25 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error:', error);
+            
+            // Handle specific errors
+            handleApiError(error);
+            
+            // Track error event
+            trackEvent('PDF', 'Merge', 'Error: ' + error.message);
+        });
+    });
+    
+    // More sophisticated error handling
+    function handleApiError(error) {
+        // Check for specific error types
+        if (error.message.includes('size')) {
+            showNotification('The files you selected exceed the maximum allowed size.', 'error');
+        } else if (error.message.includes('type')) {
+            showNotification('Only PDF files are supported.', 'error');
+        } else if (navigator.onLine === false) {
+            showNotification('You appear to be offline. Please check your connection.', 'warning');
+        } else {
             resultDiv.innerHTML = `
                 <div class="error-container">
                     <div class="error-icon">!</div>
@@ -123,15 +178,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     <button class="retry-button" onclick="location.reload()">Try Again</button>
                 </div>
             `;
-        });
-    });
+        }
+    }
     
     function showNotification(message, type) {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
+        notification.setAttribute('role', 'alert');
+        notification.setAttribute('aria-live', 'assertive');
         notification.innerHTML = `
             <span class="notification-message">${message}</span>
-            <span class="notification-close" onclick="this.parentElement.remove()">×</span>
+            <button aria-label="Close notification" class="notification-close" onclick="this.parentElement.remove()">×</button>
         `;
         document.body.appendChild(notification);
         
@@ -141,4 +198,79 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => notification.remove(), 500);
         }, 5000);
     }
+    
+    // Simple analytics tracking
+    function trackEvent(category, action, label) {
+        if (window.localStorage.getItem('allow_analytics') === 'true') {
+            console.log('Tracked:', category, action, label);
+        }
+    }
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && document.activeElement.classList.contains('file-item')) {
+            // Handle keyboard selection of files
+            document.activeElement.click();
+        }
+    });
+    
+    // Lazy load the Features section
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, {threshold: 0.1});
+
+    document.querySelectorAll('.feature-card').forEach(card => {
+        observer.observe(card);
+    });
+    
+    // Theme toggle functionality
+    const themeToggle = document.getElementById('theme-toggle');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // Add transition class to body after page load to prevent flash
+    setTimeout(() => {
+        document.body.classList.add('theme-transition');
+    }, 100);
+    
+    // Check for saved theme preference or use OS preference
+    const getCurrentTheme = () => {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            return savedTheme;
+        }
+        return prefersDarkScheme.matches ? 'dark' : 'light';
+    };
+    
+    // Apply the current theme
+    const applyTheme = (theme) => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    };
+    
+    // Initialize theme
+    const currentTheme = getCurrentTheme();
+    applyTheme(currentTheme);
+    
+    // Toggle theme when button is clicked
+    themeToggle.addEventListener('click', () => {
+        const newTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+        
+        // Add animation effect
+        themeToggle.classList.add('rotate');
+        setTimeout(() => {
+            themeToggle.classList.remove('rotate');
+        }, 500);
+    });
+    
+    // Listen for OS theme changes
+    prefersDarkScheme.addEventListener('change', (e) => {
+        const newTheme = e.matches ? 'dark' : 'light';
+        applyTheme(newTheme);
+    });
 });
