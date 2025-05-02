@@ -1,7 +1,6 @@
 import os
 import logging
-import traceback
-from pypdf import PdfReader, PdfWriter, errors
+from pypdf import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +14,15 @@ if not logger.handlers:
 
 def merge_pdfs(input_paths, output_path, output_filename=None):
     """
-    Merge multiple PDF files into a single PDF file using pypdf.
+    Merge multiple PDF files into a single PDF file.
     
     Args:
         input_paths (list): List of paths to PDF files to merge
         output_path (str): Path where the merged PDF should be saved
-        output_filename (str, optional): Custom filename for the merged PDF.
-                                       If provided, will override the filename portion of output_path
+        output_filename (str, optional): Custom filename for the merged PDF
     
     Returns:
-        dict: Dictionary containing:
-            - 'success': bool indicating if merge was successful
-            - 'path': Path to the merged file if successful
-            - 'error': Error message if unsuccessful
+        dict: Dictionary with success status, path, and error message if any
     """
     try:
         # Validate input paths
@@ -35,15 +30,7 @@ def merge_pdfs(input_paths, output_path, output_filename=None):
             logger.error("At least two PDF files are required for merging")
             return {'success': False, 'path': None, 'error': 'At least two PDF files are required for merging'}
         
-        # Security check: Ensure all paths are within allowed directory
-        allowed_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'static', 'uploads'))
-        for path in input_paths:
-            abs_path = os.path.abspath(path)
-            if not abs_path.startswith(allowed_dir):
-                logger.error(f"Invalid file path: {path}")
-                return {'success': False, 'path': None, 'error': 'Invalid file path'}
-        
-        # Check if all input files exist
+        # Check if all input files exist without path restrictions
         missing_files = [path for path in input_paths if not os.path.exists(path)]
         if missing_files:
             missing_list = ', '.join(missing_files)
@@ -68,25 +55,18 @@ def merge_pdfs(input_paths, output_path, output_filename=None):
                     logger.error(f"File is empty: {path}")
                     return {'success': False, 'path': None, 'error': f'File is empty: {os.path.basename(path)}'}
                 
-                # Set resource limits to prevent DoS
-                pdf_reader = PdfReader(path, strict=True)
-                
-                # Limit number of pages per PDF (optional)
-                max_pages = 500
-                if len(pdf_reader.pages) > max_pages:
-                    logger.error(f"PDF exceeds maximum page limit of {max_pages}: {path}")
-                    return {'success': False, 'path': None, 'error': f'PDF exceeds maximum page limit of {max_pages}'}
-                
-                # Add each page to the writer
-                for page in pdf_reader.pages:
-                    pdf_writer.add_page(page)
-                
-            except errors.PdfReadError as e:
-                logger.error(f"Error reading PDF file {path}: {str(e)}")
-                return {'success': False, 'path': None, 'error': f'Invalid PDF file {os.path.basename(path)}: {str(e)}'}
+                # Try to open and read the PDF file
+                with open(path, 'rb') as pdf_file:
+                    pdf_reader = PdfReader(pdf_file)
+                    page_count = len(pdf_reader.pages)
+                    logger.info(f"Found {page_count} pages in {path}")
+                    
+                    # Add each page to the writer
+                    for page in pdf_reader.pages:
+                        pdf_writer.add_page(page)
+                        
             except Exception as e:
-                logger.error(f"Unexpected error processing PDF file {path}: {str(e)}")
-                logger.error(traceback.format_exc())
+                logger.error(f"Error processing file {path}: {str(e)}")
                 return {'success': False, 'path': None, 'error': f'Error processing {os.path.basename(path)}: {str(e)}'}
         
         # Handle custom filename if provided
@@ -107,7 +87,6 @@ def merge_pdfs(input_paths, output_path, output_filename=None):
                 pdf_writer.write(output_file)
         except Exception as e:
             logger.error(f"Error writing merged PDF to {final_output_path}: {str(e)}")
-            logger.error(traceback.format_exc())
             return {'success': False, 'path': None, 'error': f'Error writing output file: {str(e)}'}
         
         # Verify the file was created
@@ -124,5 +103,4 @@ def merge_pdfs(input_paths, output_path, output_filename=None):
         
     except Exception as e:
         logger.error(f"Unexpected error merging PDFs: {str(e)}")
-        logger.error(traceback.format_exc())
         return {'success': False, 'path': None, 'error': f'Error merging PDFs: {str(e)}'}

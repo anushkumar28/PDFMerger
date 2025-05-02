@@ -81,13 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.download_link) {
                 // Success case
-                resultContainer.innerHTML = `
-                    <div class="success-message">
-                        <h3>PDFs Merged Successfully!</h3>
-                        <p>Your files have been combined into a single PDF document.</p>
-                        <a href="${data.download_link}" class="download-button" download>Download Merged PDF</a>
-                    </div>
-                `;
+                handleDownload(data.download_link);
             } else {
                 // Error case
                 showError(data.error || 'An unknown error occurred');
@@ -99,33 +93,62 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Use safer DOM methods instead of innerHTML
+    // Add or update the function that handles PDF download
+    function handleDownload(downloadLink) {
+        // Show loading state
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = '<p>Preparing your download...</p>';
+        
+        // Create a download button with event handling
+        const downloadButton = document.createElement('a');
+        downloadButton.href = downloadLink;
+        downloadButton.className = 'download-btn';
+        downloadButton.innerHTML = '<i class="fas fa-download"></i> Download Merged PDF';
+        downloadButton.target = '_blank'; // Open in new tab
+        
+        // Add error handling
+        downloadButton.addEventListener('click', function(event) {
+            // Check if download completes
+            const checkDownload = setTimeout(function() {
+                // After 5 seconds, check if download started
+                fetch(downloadLink, { method: 'HEAD' })
+                    .then(response => {
+                        if (!response.ok) {
+                            showError('The file could not be downloaded. Please try merging again.');
+                        }
+                    })
+                    .catch(() => {
+                        showError('Download failed. The file might have been deleted or is not accessible.');
+                    });
+            }, 5000);
+            
+            // On successful navigation, clear the timeout
+            window.addEventListener('blur', function() {
+                clearTimeout(checkDownload);
+            }, { once: true });
+        });
+        
+        // Clear the result div and add the download button
+        resultDiv.innerHTML = '';
+        resultDiv.appendChild(downloadButton);
+        
+        // Add a message about file expiration
+        const expirationNote = document.createElement('p');
+        expirationNote.className = 'expiration-note';
+        expirationNote.textContent = 'Note: This file will expire after 24 hours.';
+        resultDiv.appendChild(expirationNote);
+    }
+
+    // Function to show errors
     function showError(message) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-container';
-        
-        const errorIcon = document.createElement('div');
-        errorIcon.className = 'error-icon';
-        errorIcon.textContent = '!';
-        
-        const heading = document.createElement('h3');
-        heading.textContent = 'Error Merging PDFs';
-        
-        const paragraph = document.createElement('p');
-        paragraph.textContent = message || 'Something went wrong. Please try again.';
-        
-        const button = document.createElement('button');
-        button.className = 'retry-button';
-        button.textContent = 'Try Again';
-        button.addEventListener('click', () => location.reload());
-        
-        errorDiv.appendChild(errorIcon);
-        errorDiv.appendChild(heading);
-        errorDiv.appendChild(paragraph);
-        errorDiv.appendChild(button);
-        
-        resultContainer.innerHTML = '';
-        resultContainer.appendChild(errorDiv);
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = `
+            <div class="error-message">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>${message}</p>
+                <button onclick="window.location.reload()" class="retry-btn">Try Again</button>
+            </div>
+        `;
     }
 
     // Add keyboard navigation support

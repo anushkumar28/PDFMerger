@@ -131,10 +131,10 @@
         </div>
     </footer>
 
-    <script src="js/pdf-upload.js"></script>
-    <script src="js/theme-toggle.js"></script>
+    <script src="js/pdf-upload.js" nonce="{{ nonce }}"></script>
+    <script src="js/theme-toggle.js" nonce="{{ nonce }}"></script>
     <!-- Add this just before the closing </body> tag -->
-    <script>
+    <script nonce="{{ nonce }}">
     // Monitor theme changes
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {

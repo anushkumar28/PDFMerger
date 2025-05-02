@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify, send_from_directory, after_this_request
+from flask import Flask, request, jsonify, send_file, send_from_directory, abort, render_template, after_this_request
 from flask_cors import CORS
 import os
 import traceback
-from backend.utils.pdf_merger import merge_pdfs
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
@@ -10,16 +9,24 @@ from werkzeug.utils import secure_filename
 import secrets
 import threading
 import time
+import uuid
+import io
+from pypdf import PdfReader, PdfWriter
 
 app = Flask(__name__, static_folder='frontend')
 CORS(app)
 
-UPLOAD_FOLDER = 'static/uploads'
+# Configure upload folder with absolute path for reliability
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'output')
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 
-# Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Ensure directories exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Add structured error handling with proper logging
 logging.basicConfig(
@@ -57,7 +64,11 @@ uploaded_file_tracker = {}
 
 @app.route('/')
 def index():
-    return send_from_directory('frontend', 'index.html')
+    # Generate a random nonce for this request
+    nonce = secrets.token_hex(16)
+    
+    # Render template with nonce
+    return render_template('index.html', nonce=nonce)
 
 @app.route('/<path:path>')
 def serve_static(path):
@@ -101,10 +112,13 @@ def generate_secure_filename(filename):
     name, ext = os.path.splitext(secure_name)
     return f"{name}_{random_token}{ext}"
 
-# Add specific limits to sensitive routes
+# Dictionary to store in-memory PDF data with expiration logic
+# This replaces file storage entirely
+pdf_memory_store = {}
+
 @app.route('/upload', methods=['POST'])
 @limiter.limit("10 per minute")
-def upload_files():
+def upload_file():
     try:
         logger.info("Files in request: %s", list(request.files.keys()))
         
@@ -119,168 +133,145 @@ def upload_files():
             logger.info("Need at least 2 files to merge")
             return jsonify({'error': 'Need at least 2 PDF files to merge'}), 400
         
-        pdf_paths = []
-
+        # Process PDFs entirely in memory
+        pdf_readers = []
+        
         for file in files:
-            if file and file.filename.endswith('.pdf'):
-                filename = generate_secure_filename(file.filename)
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(file_path)
-                
-                # Validate PDF after saving
-                if not is_safe_pdf(file_path):
-                    os.remove(file_path)  # Remove potentially malicious file
-                    return jsonify({'error': 'Invalid or potentially unsafe PDF file'}), 400
-                
-                # Verify the file was saved
-                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                    pdf_paths.append(file_path)
-                    logger.info("Successfully saved file: %s", file_path)
-                else:
-                    logger.info("Failed to save file or file is empty: %s", file_path)
-                    return jsonify({'error': f'Failed to save file: {filename}'}), 500
-            else:
-                logger.info("Invalid file: %s", file.filename if file else 'None')
-                return jsonify({'error': 'Only PDF files are allowed'}), 400
-
-        if not pdf_paths or len(pdf_paths) < 2:
-            logger.info("No valid PDF files were uploaded")
-            return jsonify({'error': 'No valid PDF files were uploaded'}), 400
-
-        # Get custom filename if provided or generate a default one
-        output_filename = None
-        if 'output_filename' in request.form and request.form['output_filename'].strip():
-            output_filename = request.form['output_filename'].strip()
-            logger.info("Custom filename provided: %s", output_filename)
-        else:
-            # Generate a unique output filename
-            import uuid
-            output_filename = f"merged_document_{uuid.uuid4().hex[:8]}"
-        
-        # Make sure it has .pdf extension
-        if not output_filename.lower().endswith('.pdf'):
-            output_filename += '.pdf'
-            
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'merged_document.pdf') # Use a default base name
-        
-        logger.info("Attempting to merge PDFs to: %s with custom name: %s", output_path, output_filename)
-
-        # Change this line to pass the output_filename parameter
-        merge_result = merge_pdfs(pdf_paths, output_path, output_filename)
-        logger.info("Merge result: %s", merge_result)
-        
-        if merge_result['success']:
-            merged_filename = os.path.basename(merge_result["path"])
-            download_link = f'/download/{merged_filename}'
-            
-            # Store files to clean up later
-            uploaded_file_tracker[merged_filename] = {
-                'input_paths': pdf_paths,
-                'merged_path': merge_result["path"]
-            }
-            
-            logger.info("Success! Download link: %s", download_link)
-            return jsonify({
-                'message': 'Files merged successfully', 
-                'download_link': download_link
-            }), 200
-        else:
-            # Clean up input files on failure
-            for path in pdf_paths:
+            if file and file.filename.lower().endswith('.pdf'):
+                # Read file directly into memory
+                pdf_content = io.BytesIO(file.read())
                 try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                        logger.info("Removed uploaded file: %s", path)
+                    # Validate PDF content
+                    pdf_reader = PdfReader(pdf_content)
+                    pdf_readers.append(pdf_reader)
                 except Exception as e:
-                    logger.error(f"Error removing file {path}: {str(e)}", exc_info=True)
-                    
-            logger.info("Error merging files: %s", merge_result['error'])
-            return jsonify({'error': merge_result['error'] or 'Error merging files'}), 500
-    except Exception as e:
-        # Clean up any uploaded files on exception
-        for path in pdf_paths if 'pdf_paths' in locals() else []:
-            try:
-                if os.path.exists(path):
-                    os.remove(path)
-                    logger.info("Removed uploaded file: %s", path)
-            except Exception as remove_err:
-                logger.error(f"Error removing file {path}: {str(remove_err)}", exc_info=True)
-                
-        logger.error(f"Exception in upload_files: {str(e)}", exc_info=True)
-        traceback.print_exc()
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
+                    logger.error(f"Invalid PDF file {file.filename}: {str(e)}")
+                    return jsonify({'error': f'Invalid PDF file {file.filename}: {str(e)}'}), 400
+            else:
+                logger.error(f"Invalid file: {file.filename}")
+                return jsonify({'error': f'Invalid file format: {file.filename}. Only PDF files are allowed.'}), 400
 
-# Also fix the download route to handle potential errors
-@app.route('/download/<filename>')
-def download_file(filename):
-    # Validate filename to prevent path traversal
-    if not os.path.basename(filename) == filename:
-        return "Invalid filename", 400
-        
-    # Serve the file
-    response = send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
-    
-    # Schedule cleanup
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    delayed_file_cleanup(file_path)
-    
-    return response
-
-# Implement file cleanup with secure deletion
-def secure_delete(file_path):
-    """More secure file deletion by overwriting before deleting"""
-    if os.path.exists(file_path):
-        # Get file size
-        file_size = os.path.getsize(file_path)
-        
-        # Overwrite with random data
-        with open(file_path, 'wb') as f:
-            f.write(os.urandom(file_size))
+        # Generate output filename
+        output_filename = request.form.get('output_filename', 'merged_document')
+        if not output_filename:
+            output_filename = 'merged_document'
             
-        # Delete the file
-        os.remove(file_path)
-        logger.info(f"Securely deleted {file_path}")
+        # Add unique ID
+        unique_id = str(uuid.uuid4())[:8]
+        output_filename = f"{output_filename}_{unique_id}.pdf"
+        
+        # Create merged PDF in memory
+        pdf_writer = PdfWriter()
+        
+        # Add all pages from all PDFs
+        for reader in pdf_readers:
+            for page in reader.pages:
+                pdf_writer.add_page(page)
+                
+        # Write PDF to in-memory buffer
+        output_buffer = io.BytesIO()
+        pdf_writer.write(output_buffer)
+        output_buffer.seek(0)
+        
+        # Store in memory instead of filesystem
+        pdf_memory_store[unique_id] = {
+            'data': output_buffer,
+            'filename': output_filename
+        }
+        
+        logger.info(f"Merge successful. Created in-memory PDF with ID: {unique_id}")
+        
+        # Create download link with the unique ID as identifier
+        download_link = f"/download/{unique_id}"
+        
+        return jsonify({
+            'message': 'Files merged successfully',
+            'download_link': download_link
+        })
+            
+    except Exception as e:
+        logger.exception(f"Error in upload handler: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-def delayed_file_cleanup(file_path, delay=300):
-    """Delete a file after a specified delay (in seconds)."""
-    def delete_file():
-        time.sleep(delay)
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"Deleted temporary file: {file_path}")
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}")
+@app.route('/download/<unique_id>')
+def download_file(unique_id):
+    try:
+        # Check if the ID exists in our in-memory store
+        if unique_id not in pdf_memory_store:
+            logger.error(f"PDF with ID {unique_id} not found in memory store")
+            return jsonify({'error': 'File not found or has expired'}), 404
+            
+        # Get the PDF data from memory
+        pdf_data = pdf_memory_store[unique_id]['data']
+        filename = pdf_memory_store[unique_id]['filename']
+        
+        # Send file directly from memory
+        return send_file(
+            pdf_data,
+            download_name=filename,
+            as_attachment=True,
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error in download handler: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Optional: Add cleanup for in-memory store
+# This is a simple approach; for production, consider using a scheduled task
+@app.before_request
+def cleanup_expired_pdfs():
+    """Remove PDFs from memory that are older than 1 hour"""
+    import time
+    current_time = time.time()
     
-    # Start a background thread to delete the file
-    thread = threading.Thread(target=delete_file)
-    thread.daemon = True
-    thread.start()
+    # Add expiration timestamp if not present
+    for pdf_id in list(pdf_memory_store.keys()):
+        if 'expiration' not in pdf_memory_store[pdf_id]:
+            # Set expiration to 1 hour from now
+            pdf_memory_store[pdf_id]['expiration'] = current_time + 3600
+    
+    # Remove expired entries
+    expired_ids = [
+        pdf_id for pdf_id in pdf_memory_store 
+        if pdf_memory_store[pdf_id]['expiration'] < current_time
+    ]
+    
+    for pdf_id in expired_ids:
+        del pdf_memory_store[pdf_id]
+        logger.info(f"Removed expired PDF with ID: {pdf_id}")
+
+# Create a simple error template
+@app.route('/error')
+def error_page():
+    message = request.args.get('message', 'An error occurred')
+    return render_template('error.html', message=message)
 
 @app.after_request
 def add_security_headers(response):
-    """Add security headers to all responses."""
-    # Content Security Policy
-    response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' https://cdnjs.cloudflare.com; "
-        "font-src 'self' https://cdnjs.cloudflare.com; "
-        "img-src 'self' data:; "
-        "object-src 'none'"
+    # Extract nonce if it exists in the response
+    nonce = None
+    if hasattr(response, 'nonce'):
+        nonce = response.nonce
+    else:
+        # Generate a new nonce if one doesn't exist
+        nonce = secrets.token_hex(16)
+    
+    # Add CSP with nonce
+    csp = (
+        f"default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
+        f"font-src 'self' https://cdnjs.cloudflare.com; "
+        f"img-src 'self' data:; "
+        f"object-src 'none'"
     )
+    response.headers['Content-Security-Policy'] = csp
     
-    # Prevent MIME type sniffing
+    # Other security headers...
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    
-    # Prevent clickjacking
     response.headers['X-Frame-Options'] = 'DENY'
-    
-    # Enable XSS protection
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    
-    # Control referrer information
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     
     return response
 
