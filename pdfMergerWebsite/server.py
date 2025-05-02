@@ -13,7 +13,15 @@ import uuid
 import io
 from pypdf import PdfReader, PdfWriter
 
-app = Flask(__name__, static_folder='frontend')
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Make sure to specify static_folder and template_folder correctly
+app = Flask(__name__, 
+            static_folder='frontend',  # This points to your frontend files
+            template_folder='templates')  # This points to your templates
+
 CORS(app)
 
 # Configure upload folder with absolute path for reliability
@@ -62,13 +70,16 @@ except Exception as e:
 # Track files to clean up
 uploaded_file_tracker = {}
 
+# Serve the main page - using static file serving
 @app.route('/')
 def index():
-    # Generate a random nonce for this request
-    nonce = secrets.token_hex(16)
-    
-    # Render template with nonce
-    return render_template('index.html', nonce=nonce)
+    # Use send_static_file for static files, not render_template
+    try:
+        return app.send_static_file('index.html')
+    except Exception as e:
+        logger.exception(f"Error serving index.html: {str(e)}")
+        # Fall back to a simple text response
+        return "PDF Merger Application - Error loading frontend. Check server logs."
 
 @app.route('/<path:path>')
 def serve_static(path):
@@ -274,6 +285,17 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     
     return response
+
+# Error handler that uses templates
+@app.errorhandler(404)
+def page_not_found(e):
+    try:
+        # Try to render the error template
+        return render_template('error.html', message="Page not found"), 404
+    except Exception as template_error:
+        # If template rendering fails, return a simple response
+        logger.exception(f"Error rendering template: {str(template_error)}")
+        return "404 - Page not found", 404
 
 if __name__ == '__main__':
     app.run(debug=True)
