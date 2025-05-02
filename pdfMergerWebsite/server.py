@@ -6,17 +6,31 @@ from backend.utils.pdf_merger import merge_pdfs
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__, static_folder='frontend')
 CORS(app)
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 
-# Fix the Limiter initialization
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Add structured error handling with proper logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='pdf_merger.log'
+)
+logger = logging.getLogger('pdf_merger')
+
+# Configure Flask-Limiter without specifying storage
+# This will use the default in-memory storage
 limiter = Limiter(
-    get_remote_address,  # Remove the key_func= prefix
     app=app,
+    key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
 )
 
@@ -86,7 +100,7 @@ def upload_files():
 
         for file in files:
             if file and file.filename.endswith('.pdf'):
-                filename = os.path.basename(file.filename)
+                filename = secure_filename(file.filename)
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
                 

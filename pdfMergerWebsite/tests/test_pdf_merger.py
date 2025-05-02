@@ -3,7 +3,11 @@ import unittest
 import os
 import tempfile
 import shutil
-from backend.utils.pdf_merger import merge_pdfs
+import io
+from pypdf import PdfReader, PdfWriter
+
+# Import the merge_pdfs function
+from pdfMergerWebsite.backend.utils.pdf_merger import merge_pdfs
 
 class TestPDFMerger(unittest.TestCase):
     
@@ -11,28 +15,65 @@ class TestPDFMerger(unittest.TestCase):
         # Create temporary test directory
         self.test_dir = tempfile.mkdtemp()
         
-        # Create test PDF files (minimal valid PDF files)
+        # Define paths for test files
         self.test_file1 = os.path.join(self.test_dir, 'test1.pdf')
         self.test_file2 = os.path.join(self.test_dir, 'test2.pdf')
         
-        with open(self.test_file1, 'wb') as f:
-            f.write(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF')
+        # Create first valid PDF
+        self._create_valid_pdf(self.test_file1)
         
-        with open(self.test_file2, 'wb') as f:
-            f.write(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF')
+        # Create second valid PDF
+        self._create_valid_pdf(self.test_file2)
+        
+        # Verify the files were created successfully
+        self.assertTrue(os.path.exists(self.test_file1), f"Test file 1 not created at {self.test_file1}")
+        self.assertTrue(os.path.exists(self.test_file2), f"Test file 2 not created at {self.test_file2}")
+        self.assertTrue(os.path.getsize(self.test_file1) > 0, "Test file 1 is empty")
+        self.assertTrue(os.path.getsize(self.test_file2) > 0, "Test file 2 is empty")
+    
+    def _create_valid_pdf(self, file_path):
+        """Create a valid PDF file for testing purposes."""
+        # Create a PDF writer
+        writer = PdfWriter()
+        
+        # Add a blank page
+        writer.add_blank_page(width=200, height=200)
+        
+        # Write the PDF to the file
+        with open(file_path, "wb") as outfile:
+            writer.write(outfile)
     
     def tearDown(self):
         # Clean up test files
-        shutil.rmtree(self.test_dir)
+        try:
+            shutil.rmtree(self.test_dir)
+        except Exception as e:
+            print(f"Error cleaning up test directory: {e}")
     
     def test_merge_pdfs_success(self):
+        # Check if test files are valid before attempting to merge
+        try:
+            # Verify we can read these files with pypdf
+            with open(self.test_file1, 'rb') as f1, open(self.test_file2, 'rb') as f2:
+                pdf1 = PdfReader(f1)
+                pdf2 = PdfReader(f2)
+                print(f"Test file 1 has {len(pdf1.pages)} pages")
+                print(f"Test file 2 has {len(pdf2.pages)} pages")
+        except Exception as e:
+            self.fail(f"Test PDF files are not valid: {e}")
+            
         output_path = os.path.join(self.test_dir, 'merged.pdf')
         result = merge_pdfs([self.test_file1, self.test_file2], output_path)
         
+        # Add debug output to help diagnose failure
+        if not result['success']:
+            print(f"Error merging PDFs: {result['error']}")
+            
         self.assertTrue(result['success'])
         self.assertIsNotNone(result['path'])
         self.assertIsNone(result['error'])
         self.assertTrue(os.path.exists(result['path']))
+        self.assertTrue(os.path.getsize(result['path']) > 0, "Merged PDF file is empty")
     
     def test_merge_pdfs_with_custom_filename(self):
         output_path = os.path.join(self.test_dir, 'merged.pdf')
@@ -40,6 +81,10 @@ class TestPDFMerger(unittest.TestCase):
         
         result = merge_pdfs([self.test_file1, self.test_file2], output_path, custom_filename)
         
+        # Add debug output to help diagnose failure
+        if not result['success']:
+            print(f"Error merging PDFs: {result['error']}")
+            
         self.assertTrue(result['success'])
         self.assertTrue(os.path.basename(result['path']) == 'custom_name.pdf')
     

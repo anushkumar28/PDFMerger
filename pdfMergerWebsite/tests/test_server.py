@@ -4,13 +4,26 @@ import io
 import tempfile
 import shutil
 import sys
-from contextlib import contextmanager
 import json
+from contextlib import contextmanager
 
-# Add the parent directory to sys.path to make imports work
+# Add the parent directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from server import app  
+# Import app avoiding the actual file execution
+try:
+    # First attempt to import directly
+    from server import app
+except (ImportError, ModuleNotFoundError) as e:
+    print(f"Direct import failed: {e}")
+    # If that fails, modify sys.modules to mock any problematic imports
+    import types
+    sys.modules['flask_limiter.storage'] = types.ModuleType('flask_limiter.storage')
+    sys.modules['flask_limiter.storage'].MemoryStorage = object
+    
+    # Try importing again
+    from server import app
+
 class TestServerEndpoints(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True

@@ -1,102 +1,123 @@
-from PyPDF2 import PdfMerger
 import os
+import logging
 import traceback
+from pypdf import PdfReader, PdfWriter, errors
+
+logger = logging.getLogger(__name__)
+
+# Configure logging if not already configured
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 def merge_pdfs(input_paths, output_path, output_filename=None):
     """
-    Merge multiple PDF files into a single PDF file.
-    
-    This function validates all input paths, checks for file readability,
-    and combines them into a single output PDF. It performs clean error
-    handling and returns a structured response.
+    Merge multiple PDF files into a single PDF file using pypdf.
     
     Args:
         input_paths (list): List of paths to PDF files to merge
         output_path (str): Path where the merged PDF should be saved
         output_filename (str, optional): Custom filename for the merged PDF.
-                                        If provided, will override the filename portion of output_path
+                                       If provided, will override the filename portion of output_path
     
     Returns:
         dict: Dictionary containing:
             - 'success': bool indicating if merge was successful
             - 'path': Path to the merged file if successful
             - 'error': Error message if unsuccessful
-            
-    Raises:
-        No exceptions are raised as they're caught internally and returned in the result dict.
-        
-    Example:
-        >>> result = merge_pdfs(['file1.pdf', 'file2.pdf'], 'output/merged.pdf')
-        >>> if result['success']:
-        >>>     print(f"Merged PDF saved to {result['path']}")
     """
     try:
-        print(f"Starting to merge PDFs. Input paths: {input_paths}")
-        print(f"Original output path: {output_path}")
+        # Validate input paths
+        if not input_paths or len(input_paths) < 2:
+            logger.error("At least two PDF files are required for merging")
+            return {'success': False, 'path': None, 'error': 'At least two PDF files are required for merging'}
+        
+        # Check if all input files exist
+        missing_files = [path for path in input_paths if not os.path.exists(path)]
+        if missing_files:
+            missing_list = ', '.join(missing_files)
+            logger.error(f"The following files do not exist: {missing_list}")
+            return {'success': False, 'path': None, 'error': f'The following files do not exist: {missing_list}'}
+        
+        # Initialize PDF writer
+        pdf_writer = PdfWriter()
+        
+        # Read and append each PDF
+        for path in input_paths:
+            try:
+                logger.info(f"Processing file: {path}")
+                
+                # Check if file is readable
+                if not os.access(path, os.R_OK):
+                    logger.error(f"No read permission for file: {path}")
+                    return {'success': False, 'path': None, 'error': f'Cannot read file {os.path.basename(path)}'}
+                
+                # Check if file size is not zero
+                if os.path.getsize(path) == 0:
+                    logger.error(f"File is empty: {path}")
+                    return {'success': False, 'path': None, 'error': f'File is empty: {os.path.basename(path)}'}
+                
+                # Try to open and read the PDF file using binary mode explicitly
+                with open(path, 'rb') as pdf_file:
+                    try:
+                        pdf_reader = PdfReader(pdf_file)
+                        page_count = len(pdf_reader.pages)
+                        logger.info(f"Found {page_count} pages in {path}")
+                        
+                        # Add each page to the writer
+                        for page in pdf_reader.pages:
+                            pdf_writer.add_page(page)
+                            
+                    except errors.PdfReadError as e:
+                        logger.error(f"Error reading PDF file {path}: {str(e)}")
+                        return {'success': False, 'path': None, 'error': f'Invalid PDF file {os.path.basename(path)}: {str(e)}'}
+                    except Exception as e:
+                        logger.error(f"Unexpected error processing PDF file {path}: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        return {'success': False, 'path': None, 'error': f'Error processing {os.path.basename(path)}: {str(e)}'}
+                
+            except Exception as e:
+                logger.error(f"Error accessing file {path}: {str(e)}")
+                logger.error(traceback.format_exc())
+                return {'success': False, 'path': None, 'error': f'Error accessing {os.path.basename(path)}: {str(e)}'}
         
         # Handle custom filename if provided
+        final_output_path = output_path
         if output_filename:
-            # Ensure filename has .pdf extension
+            output_dir = os.path.dirname(output_path)
             if not output_filename.lower().endswith('.pdf'):
                 output_filename += '.pdf'
-                
-            # Replace the filename portion of the output path
-            output_dir = os.path.dirname(output_path)
-            output_path = os.path.join(output_dir, output_filename)
-            print(f"Custom filename provided. New output path: {output_path}")
+            final_output_path = os.path.join(output_dir, output_filename)
         
-        # Validate input paths
-        valid_paths = []
-        for pdf_file in input_paths:
-            if not os.path.exists(pdf_file):
-                print(f"Warning: File {pdf_file} not found and will be skipped.")
-                continue
-            if not os.path.isfile(pdf_file):
-                print(f"Warning: Path {pdf_file} is not a file and will be skipped.")
-                continue
-                
-            # Check if file is readable
-            try:
-                with open(pdf_file, 'rb') as f:
-                    f.read(1024)  # Try to read a small part
-                valid_paths.append(pdf_file)
-            except Exception as e:
-                print(f"Warning: File {pdf_file} cannot be read: {str(e)}")
-                
-        if not valid_paths:
-            print("Error: No valid PDF files to merge!")
-            return {'success': False, 'error': 'No valid PDF files to merge', 'path': None}
-            
-        print(f"Valid paths for merging: {valid_paths}")
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(final_output_path)), exist_ok=True)
         
-        # Create merger object
-        merger = PdfMerger()
+        # Write the merged PDF
+        logger.info(f"Writing merged PDF to: {final_output_path}")
+        try:
+            with open(final_output_path, 'wb') as output_file:
+                pdf_writer.write(output_file)
+        except Exception as e:
+            logger.error(f"Error writing merged PDF to {final_output_path}: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {'success': False, 'path': None, 'error': f'Error writing output file: {str(e)}'}
         
-        # Add each PDF file to the merger
-        for pdf_file in valid_paths:
-            print(f"Adding {pdf_file} to merger...")
-            merger.append(pdf_file)
+        # Verify the file was created
+        if not os.path.exists(final_output_path):
+            logger.error(f"Output file was not created: {final_output_path}")
+            return {'success': False, 'path': None, 'error': 'Failed to create merged PDF file'}
         
-        # Ensure the output directory exists
-        output_dir = os.path.dirname(output_path)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-            
-        # Write the merged PDF to the output file
-        print(f"Writing merged PDF to {output_path}")
-        merger.write(output_path)
-        merger.close()
+        if os.path.getsize(final_output_path) == 0:
+            logger.error(f"Output file is empty: {final_output_path}")
+            return {'success': False, 'path': None, 'error': 'Output PDF file is empty'}
         
-        # Verify the output file was created
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            print(f"Successfully merged {len(valid_paths)} PDFs into {output_path}")
-            return {'success': True, 'path': output_path, 'error': None}
-        else:
-            print(f"Error: Output file {output_path} was not created or is empty")
-            return {'success': False, 'error': 'Output file was not created or is empty', 'path': None}
-            
+        logger.info(f"Successfully created merged PDF: {final_output_path}")
+        return {'success': True, 'path': final_output_path, 'error': None}
+        
     except Exception as e:
-        error_msg = f"Error merging PDFs: {str(e)}"
-        print(error_msg)
-        traceback.print_exc()
-        return {'success': False, 'error': error_msg, 'path': None}
+        logger.error(f"Unexpected error merging PDFs: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {'success': False, 'path': None, 'error': f'Error merging PDFs: {str(e)}'}
