@@ -3,17 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Merger</title>
+    <title>PDF Merger | Combine Multiple PDFs Easily</title>
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <div class="container">
         <h1>PDF Merger</h1>
+        
         <form id="upload-form" enctype="multipart/form-data">
-            <label for="pdf-files">Upload PDF files:</label>
+            <label for="pdf-files">Select PDF files to merge:</label>
             <input type="file" id="pdf-files" name="pdf-files" accept="application/pdf" multiple required>
+            <label for="pdf-files" class="file-input-label">
+                <i class="fas fa-file-pdf file-input-icon"></i> 
+                Choose PDF Files
+            </label>
             
-            <!-- Add filename input field -->
             <div class="filename-container">
                 <label for="output-filename">Name your merged file:</label>
                 <div class="filename-input-group">
@@ -27,11 +32,64 @@
                 </div>
             </div>
             
-            <button type="submit">Merge PDFs</button>
+            <button type="submit">
+                <i class="fas fa-object-group"></i> Merge PDFs
+            </button>
         </form>
-        <div id="result"></div>
+        
+        <!-- File list will be inserted here by JavaScript -->
+        
+        <div id="result" class="result-container"></div>
     </div>
+
+    <!-- Features section -->
+    <div class="features-section">
+        <div class="container">
+            <h2>Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>Secure</h3>
+                    <p>Your files are processed locally and never stored on our servers.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <h3>Fast</h3>
+                    <p>Quickly merge multiple PDF files into a single document.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-desktop"></i>
+                    </div>
+                    <h3>Easy to Use</h3>
+                    <p>Simple interface that makes PDF merging accessible to everyone.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <h3>Custom Naming</h3>
+                    <p>Name your merged PDF document whatever you want.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>© 2025 PDF Merger. All rights reserved.</p>
+            <p>A simple tool to combine multiple PDF files into one document.</p>
+        </div>
+    </footer>
+
     <script src="js/pdf-upload.js"></script>
-    <script src="js/main.js"></script>
 </body>
 </html>
