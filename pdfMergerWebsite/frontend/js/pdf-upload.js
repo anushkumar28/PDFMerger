@@ -273,4 +273,54 @@ document.addEventListener('DOMContentLoaded', function() {
         const newTheme = e.matches ? 'dark' : 'light';
         applyTheme(newTheme);
     });
+    
+    // Add client-side validation
+    uploadForm.addEventListener('submit', function(event) {
+        // Prevent form submission if validation fails
+        if (!validateFiles()) {
+            event.preventDefault();
+            return false;
+        }
+    });
+    
+    function validateFiles() {
+        const files = fileInput.files;
+        
+        // Check if files exist
+        if (!files || files.length < 2) {
+            showError('Please select at least two PDF files.');
+            return false;
+        }
+        
+        // Check each file
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            
+            // Check file type
+            if (file.type !== 'application/pdf') {
+                showError(`"${file.name}" is not a PDF file.`);
+                return false;
+            }
+            
+            // Check file size (10MB limit)
+            const maxSize = 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showError(`"${file.name}" exceeds the maximum file size of 10MB.`);
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    function showError(message) {
+        // Display error message to user
+        const errorElement = document.createElement('div');
+        errorElement.className = 'error-message';
+        errorElement.textContent = message;
+        
+        const result = document.getElementById('result');
+        result.innerHTML = '';
+        result.appendChild(errorElement);
+    }
 });

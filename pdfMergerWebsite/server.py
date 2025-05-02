@@ -7,6 +7,9 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
 from werkzeug.utils import secure_filename
+import secrets
+import threading
+import time
 
 app = Flask(__name__, static_folder='frontend')
 CORS(app)
@@ -26,21 +29,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger('pdf_merger')
 
-# Configure Flask-Limiter without specifying storage
-# This will use the default in-memory storage
+# Update your rate limiting configuration
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"  # For production, consider Redis or another persistent backend
 )
-
-# Add structured error handling with proper logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='pdf_merger.log'
-)
-logger = logging.getLogger('pdf_merger')
 
 # At the start of your server.py file
 try:
@@ -84,6 +79,29 @@ def is_safe_pdf(file_path):
     except:
         return False
 
+# Add this function to validate uploaded files
+def validate_pdf_file(file):
+    """Validate that the uploaded file is actually a PDF."""
+    # Check MIME type
+    if not file.content_type == 'application/pdf':
+        return False
+        
+    # Check file signature (magic bytes)
+    file_content = file.read(5)
+    file.seek(0)  # Reset file pointer
+    
+    # PDF files start with %PDF-
+    return file_content.startswith(b'%PDF-')
+
+# Generate a secure random token for filenames
+def generate_secure_filename(filename):
+    """Generate a secure filename with a random token."""
+    secure_name = secure_filename(filename)
+    random_token = secrets.token_hex(8)
+    name, ext = os.path.splitext(secure_name)
+    return f"{name}_{random_token}{ext}"
+
+# Add specific limits to sensitive routes
 @app.route('/upload', methods=['POST'])
 @limiter.limit("10 per minute")
 def upload_files():
@@ -105,7 +123,7 @@ def upload_files():
 
         for file in files:
             if file and file.filename.endswith('.pdf'):
-                filename = secure_filename(file.filename)
+                filename = generate_secure_filename(file.filename)
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
                 
@@ -195,49 +213,18 @@ def upload_files():
 # Also fix the download route to handle potential errors
 @app.route('/download/<filename>')
 def download_file(filename):
-    try:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if not os.path.exists(file_path):
-            logger.info("File not found: %s", file_path)
-            return jsonify({'error': 'File not found'}), 404
+    # Validate filename to prevent path traversal
+    if not os.path.basename(filename) == filename:
+        return "Invalid filename", 400
         
-        # Get files to clean up after the response
-        files_to_clean = uploaded_file_tracker.get(filename, {})
-        
-        @after_this_request
-        def clean_up_files(response):
-            if filename in uploaded_file_tracker:
-                # Clean up input files
-                for path in files_to_clean.get('input_paths', []):
-                    try:
-                        if os.path.exists(path):
-                            os.remove(path)
-                            logger.info("Removed uploaded file: %s", path)
-                    except Exception as e:
-                        logger.error(f"Error removing file {path}: {str(e)}", exc_info=True)
-                
-                # Clean up merged file
-                merged_path = files_to_clean.get('merged_path')
-                if merged_path and os.path.exists(merged_path):
-                    try:
-                        os.remove(merged_path)
-                        logger.info("Removed merged file: %s", merged_path)
-                    except Exception as e:
-                        logger.error(f"Error removing merged file {merged_path}: {str(e)}", exc_info=True)
-                
-                # Remove from tracker
-                uploaded_file_tracker.pop(filename, None)
-                logger.info("Cleaned up files for %s", filename)
-            
-            return response
-        
-        logger.info("Serving file: %s", file_path)
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
-    except Exception as e:
-        logger.error(f"Exception in download_file: {str(e)}", exc_info=True)
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Error downloading file: {str(e)}'}), 500
+    # Serve the file
+    response = send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+    
+    # Schedule cleanup
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    delayed_file_cleanup(file_path)
+    
+    return response
 
 # Implement file cleanup with secure deletion
 def secure_delete(file_path):
@@ -254,13 +241,47 @@ def secure_delete(file_path):
         os.remove(file_path)
         logger.info(f"Securely deleted {file_path}")
 
+def delayed_file_cleanup(file_path, delay=300):
+    """Delete a file after a specified delay (in seconds)."""
+    def delete_file():
+        time.sleep(delay)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Deleted temporary file: {file_path}")
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {e}")
+    
+    # Start a background thread to delete the file
+    thread = threading.Thread(target=delete_file)
+    thread.daemon = True
+    thread.start()
+
 @app.after_request
 def add_security_headers(response):
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;"
+    """Add security headers to all responses."""
+    # Content Security Policy
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com; "
+        "img-src 'self' data:; "
+        "object-src 'none'"
+    )
+    
+    # Prevent MIME type sniffing
     response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # Prevent clickjacking
     response.headers['X-Frame-Options'] = 'DENY'
+    
+    # Enable XSS protection
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+    
+    # Control referrer information
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
     return response
 
 if __name__ == '__main__':
