@@ -133,5 +133,41 @@
 
     <script src="js/pdf-upload.js"></script>
     <script src="js/theme-toggle.js"></script>
+    <!-- Add this just before the closing </body> tag -->
+    <script>
+    // Monitor theme changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'data-theme') {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          console.log(`Theme changed to: ${currentTheme}`);
+          
+          // Create a visual indicator for debugging
+          const notification = document.createElement('div');
+          notification.style.position = 'fixed';
+          notification.style.top = '10px';
+          notification.style.left = '10px';
+          notification.style.padding = '5px 10px';
+          notification.style.background = currentTheme === 'dark' ? '#6366f1' : '#4361ee';
+          notification.style.color = 'white';
+          notification.style.borderRadius = '4px';
+          notification.style.zIndex = '9999';
+          notification.textContent = `Theme: ${currentTheme}`;
+          
+          document.body.appendChild(notification);
+          
+          // Remove after 2 seconds
+          setTimeout(() => {
+            notification.remove();
+          }, 2000);
+        }
+      });
+    });
+    
+    // Start observing
+    observer.observe(document.documentElement, {
+      attributes: true
+    });
+    </script>
 </body>
 </html>

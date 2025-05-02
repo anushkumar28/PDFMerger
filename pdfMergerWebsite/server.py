@@ -68,6 +68,11 @@ def index():
 def serve_static(path):
     return send_from_directory('frontend', path)
 
+# If needed, add a specific route for the manifest
+@app.route('/manifest.json')
+def serve_manifest():
+    return send_from_directory(app.static_folder, 'manifest.json')
+
 # Implement more secure file validation
 def is_safe_pdf(file_path):
     """Validate if a file is a real PDF and not malicious"""

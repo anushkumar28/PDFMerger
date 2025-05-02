@@ -1,3 +1,44 @@
+/* Add this to the top of your CSS file */
+:root {
+  /* Light theme variables */
+  --primary-color: #4361ee;
+  --primary-dark: #3a56d4;
+  --secondary-color: #7209b7;
+  --accent-color: #f72585;
+  --bg-color: #f8f9fa;
+  --card-bg: #ffffff;
+  --text-color: #2b2d42;
+  --text-light: #8d99ae;
+  --border-color: #e9ecef;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --input-bg: #ffffff;
+  --success-color: #06d6a0;
+  --error-color: #ef476f;
+  --warning-color: #ffd166;
+  --panel-bg: #f1f5f9;
+  --icon-bg: rgba(67, 97, 238, 0.1);
+}
+
+/* Dark theme variables */
+[data-theme="dark"] {
+  --primary-color: #6366f1;
+  --primary-dark: #4f46e5;
+  --secondary-color: #8b5cf6;
+  --accent-color: #ec4899;
+  --bg-color: #111827;
+  --card-bg: #1f2937;
+  --text-color: #f9fafb;
+  --text-light: #9ca3af;
+  --border-color: #374151;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --input-bg: #374151;
+  --success-color: #10b981;
+  --error-color: #ef4444;
+  --warning-color: #f59e0b;
+  --panel-bg: #1e293b;
+  --icon-bg: rgba(99, 102, 241, 0.2);
+}
+
 :root {
     --primary-color: #4361ee;
     --primary-dark: #3a56d4;
@@ -53,6 +94,8 @@ body {
     margin: 0;
     min-height: 100vh;
     transition: background-color 0.3s ease;
+    background-color: var(--bg-color);
+    color: var(--text-color);
 }
 
 header {
@@ -916,4 +959,85 @@ button[type="submit"]:hover::after {
 .file-item-ghost {
   opacity: 0.5;
   background-color: var(--border-color);
+}
+
+/* Light theme (default) */
+:root {
+  --primary-color: #4361ee;
+  --primary-dark: #3a56d4;
+  --secondary-color: #7209b7;
+  --accent-color: #f72585;
+  --bg-color: #f8f9fa;
+  --card-bg: #ffffff;
+  --text-color: #2b2d42;
+  --text-light: #8d99ae;
+  --border-color: #e9ecef;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --input-bg: #ffffff;
+  /* Other variables... */
+}
+
+/* Dark theme variables - more specific selector to increase specificity */
+html[data-theme="dark"] {
+  --primary-color: #6366f1;
+  --primary-dark: #4f46e5;
+  --secondary-color: #8b5cf6;
+  --accent-color: #ec4899;
+  --bg-color: #111827;
+  --card-bg: #1f2937;
+  --text-color: #f9fafb;
+  --text-light: #9ca3af;
+  --border-color: #374151;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --input-bg: #374151;
+  /* Other variables... */
+}
+
+/* Add redundant class-based theming for better compatibility */
+body.light-theme {
+  background-color: #f8f9fa;
+  color: #2b2d42;
+}
+
+body.dark-theme {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+/* Apply the variables explicitly to important elements */
+body {
+  background-color: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Make sure all other elements have transitions for smooth theme changes */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Make sure the theme toggle icons switch correctly */
+.theme-toggle .fa-sun {
+  display: none;
+}
+
+.theme-toggle .fa-moon {
+  display: block;
+}
+
+html[data-theme="dark"] .theme-toggle .fa-sun,
+body.dark-theme .theme-toggle .fa-sun {
+  display: block !important;
+}
+
+html[data-theme="dark"] .theme-toggle .fa-moon,
+body.dark-theme .theme-toggle .fa-moon {
+  display: none !important;
+}
+
+/* Define important elements with theme variables */
+.container, .card, form, button, input {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border-color: var(--border-color);
 }
