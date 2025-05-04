@@ -1,30 +1,32 @@
-from flask import Flask, request, jsonify, send_file, send_from_directory, abort, render_template, after_this_request
-from flask_cors import CORS
 import os
-import traceback
+import io
+import uuid
+import secrets
+import logging
+import time
+from flask import Flask, request, jsonify, send_file, send_from_directory, render_template
+from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import logging
 from werkzeug.utils import secure_filename
-import secrets
-import threading
-import time
-import uuid
-import io
 from pypdf import PdfReader, PdfWriter
+import jinja2  # For jinja2.exceptions.TemplateError
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Configure logging once
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='pdf_merger.log'
+)
+logger = logging.getLogger('pdf_merger')
 
-# Make sure to specify static_folder and template_folder correctly
+# Flask app configuration
 app = Flask(__name__, 
-            static_folder='frontend',  # This points to your frontend files
-            template_folder='templates')  # This points to your templates
-
+            static_folder='frontend',
+            template_folder='templates')
 CORS(app)
 
-# Configure upload folder with absolute path for reliability
+# Directory configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
 OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'output')
 
@@ -36,100 +38,100 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Add structured error handling with proper logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='pdf_merger.log'
-)
-logger = logging.getLogger('pdf_merger')
-
-# Update your rate limiting configuration
+# Configure rate limiting
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"  # For production, consider Redis or another persistent backend
+    storage_uri="memory://"  # For production, consider Redis
 )
 
-# At the start of your server.py file
+# In-memory PDF storage
+pdf_memory_store = {}
+
+# Verify upload directory permissions
 try:
-    # Create upload directory if it doesn't exist
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    
-    # Test write permissions
     test_file = os.path.join(app.config['UPLOAD_FOLDER'], 'test_write.txt')
-    with open(test_file, 'w') as f:
+    with open(test_file, 'w', encoding='utf-8') as f:
         f.write('test')
     os.remove(test_file)
-    logger.info(f"Upload directory is writable: {app.config['UPLOAD_FOLDER']}")
-except Exception as e:
-    logger.error(f"ERROR: Cannot write to upload directory: {str(e)}", exc_info=True)
-    # This will help identify permission issues at startup
-
-# Track files to clean up
-uploaded_file_tracker = {}
-
-# Serve the main page - using static file serving
-@app.route('/')
-def index():
-    # Use send_static_file for static files, not render_template
-    try:
-        return app.send_static_file('index.html')
-    except Exception as e:
-        logger.exception(f"Error serving index.html: {str(e)}")
-        # Fall back to a simple text response
-        return "PDF Merger Application - Error loading frontend. Check server logs."
-
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('frontend', path)
-
-# If needed, add a specific route for the manifest
-@app.route('/manifest.json')
-def serve_manifest():
-    return send_from_directory(app.static_folder, 'manifest.json')
-
-# Implement more secure file validation
-def is_safe_pdf(file_path):
-    """Validate if a file is a real PDF and not malicious"""
-    try:
-        with open(file_path, 'rb') as f:
-            header = f.read(5)
-            # Check for PDF magic number
-            return header == b'%PDF-'
-    except:
-        return False
-
-# Add this function to validate uploaded files
+    logger.info("Upload directory is writable: %s", app.config['UPLOAD_FOLDER'])
+except (OSError, IOError, PermissionError) as e:
+    logger.error("ERROR: Cannot write to upload directory: %s", str(e), exc_info=True)
 def validate_pdf_file(file):
-    """Validate that the uploaded file is actually a PDF."""
+    """
+    Validate that the uploaded file is actually a PDF.
+    
+    Args:
+        file: The uploaded file object
+        
+    Returns:
+        bool: True if file is a valid PDF, False otherwise
+    """
     # Check MIME type
     if not file.content_type == 'application/pdf':
         return False
-        
     # Check file signature (magic bytes)
     file_content = file.read(5)
     file.seek(0)  # Reset file pointer
-    
     # PDF files start with %PDF-
     return file_content.startswith(b'%PDF-')
 
-# Generate a secure random token for filenames
 def generate_secure_filename(filename):
-    """Generate a secure filename with a random token."""
+    """
+    Generate a secure filename with a random token.
+    
+    Args:
+        filename (str): Original filename
+        
+    Returns:
+        str: Secure filename with random token
+    """
     secure_name = secure_filename(filename)
     random_token = secrets.token_hex(8)
     name, ext = os.path.splitext(secure_name)
     return f"{name}_{random_token}{ext}"
 
-# Dictionary to store in-memory PDF data with expiration logic
-# This replaces file storage entirely
-pdf_memory_store = {}
+def is_safe_pdf(file_path):
+    """
+    Validate if a file is a real PDF and not malicious.
+    
+    Args:
+        file_path (str): Path to the PDF file
+        
+    Returns:
+        bool: True if file is a safe PDF, False otherwise
+    """
+    try:
+        with open(file_path, 'rb') as file_obj:
+            header = file_obj.read(5)
+            # Check for PDF magic number
+            return header == b'%PDF-'
+    except (IOError, OSError, FileNotFoundError, PermissionError):
+        return False
+
+@app.route('/')
+def index():
+    """Serve the main page."""
+    try:
+        return app.send_static_file('index.html')
+    except (FileNotFoundError, IOError, OSError) as e:
+        logger.exception("Error serving index.html: %s", str(e))
+        return "PDF Merger Application - Error loading frontend. Check server logs."
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files."""
+    return send_from_directory('frontend', path)
+
+@app.route('/manifest.json')
+def serve_manifest():
+    """Serve the PWA manifest file."""
+    return send_from_directory(app.static_folder, 'manifest.json')
 
 @app.route('/upload', methods=['POST'])
 @limiter.limit("10 per minute")
 def upload_file():
+    """Handle PDF file uploads and merging."""
     try:
         logger.info("Files in request: %s", list(request.files.keys()))
         
@@ -155,67 +157,58 @@ def upload_file():
                     # Validate PDF content
                     pdf_reader = PdfReader(pdf_content)
                     pdf_readers.append(pdf_reader)
-                except Exception as e:
-                    logger.error(f"Invalid PDF file {file.filename}: {str(e)}")
+                except (ValueError, TypeError, IOError, IndexError) as e:
+                    logger.error("Invalid PDF file %s: %s", file.filename, str(e))
                     return jsonify({'error': f'Invalid PDF file {file.filename}: {str(e)}'}), 400
             else:
-                logger.error(f"Invalid file: {file.filename}")
+                logger.error("Invalid file: %s", file.filename)
                 return jsonify({'error': f'Invalid file format: {file.filename}. Only PDF files are allowed.'}), 400
-
         # Generate output filename
         output_filename = request.form.get('output_filename', 'merged_document')
         if not output_filename:
             output_filename = 'merged_document'
-            
         # Add unique ID
         unique_id = str(uuid.uuid4())[:8]
         output_filename = f"{output_filename}_{unique_id}.pdf"
-        
         # Create merged PDF in memory
         pdf_writer = PdfWriter()
-        
         # Add all pages from all PDFs
         for reader in pdf_readers:
             for page in reader.pages:
                 pdf_writer.add_page(page)
-                
         # Write PDF to in-memory buffer
         output_buffer = io.BytesIO()
         pdf_writer.write(output_buffer)
         output_buffer.seek(0)
-        
         # Store in memory instead of filesystem
+        current_time = time.time()
         pdf_memory_store[unique_id] = {
             'data': output_buffer,
-            'filename': output_filename
+            'filename': output_filename,
+            'expiration': current_time + 3600  # 1 hour expiration
         }
-        
-        logger.info(f"Merge successful. Created in-memory PDF with ID: {unique_id}")
-        
+        logger.info("Merge successful. Created in-memory PDF with ID: %s", unique_id)
         # Create download link with the unique ID as identifier
         download_link = f"/download/{unique_id}"
-        
         return jsonify({
             'message': 'Files merged successfully',
             'download_link': download_link
-        })
-            
-    except Exception as e:
-        logger.exception(f"Error in upload handler: {str(e)}")
+        })    
+    except (ValueError, TypeError, IOError, OSError, PermissionError) as e:
+        logger.exception("Error in upload handler: %s", str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download/<unique_id>')
 def download_file(unique_id):
+    """Serve the merged PDF file for download."""
     try:
         # Check if the ID exists in our in-memory store
         if unique_id not in pdf_memory_store:
-            logger.error(f"PDF with ID {unique_id} not found in memory store")
+            logger.error("PDF with ID %s not found in memory store", unique_id)
             return jsonify({'error': 'File not found or has expired'}), 404
-            
         # Get the PDF data from memory
         pdf_data = pdf_memory_store[unique_id]['data']
-        filename = pdf_memory_store[unique_id]['filename']
-        
+        filename = pdf_memory_store[unique_id]['filename']  
         # Send file directly from memory
         return send_file(
             pdf_data,
@@ -224,49 +217,37 @@ def download_file(unique_id):
             mimetype='application/pdf'
         )
         
-    except Exception as e:
-        logger.exception(f"Error in download handler: {str(e)}")
+    except (IOError, OSError, ValueError, TypeError, KeyError, MemoryError) as e:
+        logger.exception("Error in download handler: %s", str(e))
         return jsonify({'error': str(e)}), 500
 
-# Optional: Add cleanup for in-memory store
-# This is a simple approach; for production, consider using a scheduled task
 @app.before_request
 def cleanup_expired_pdfs():
-    """Remove PDFs from memory that are older than 1 hour"""
-    import time
+    """Remove PDFs from memory that are older than 1 hour."""
     current_time = time.time()
     
-    # Add expiration timestamp if not present
-    for pdf_id in list(pdf_memory_store.keys()):
-        if 'expiration' not in pdf_memory_store[pdf_id]:
-            # Set expiration to 1 hour from now
-            pdf_memory_store[pdf_id]['expiration'] = current_time + 3600
-    
-    # Remove expired entries
+    # Get list of expired IDs to avoid dictionary size change during iteration
     expired_ids = [
-        pdf_id for pdf_id in pdf_memory_store 
-        if pdf_memory_store[pdf_id]['expiration'] < current_time
+        pdf_id for pdf_id in list(pdf_memory_store.keys())
+        if pdf_memory_store[pdf_id].get('expiration', 0) < current_time
     ]
     
+    # Remove expired entries
     for pdf_id in expired_ids:
         del pdf_memory_store[pdf_id]
-        logger.info(f"Removed expired PDF with ID: {pdf_id}")
+        logger.info("Removed expired PDF with ID: %s", pdf_id)
 
-# Create a simple error template
 @app.route('/error')
 def error_page():
+    """Render the error page."""
     message = request.args.get('message', 'An error occurred')
     return render_template('error.html', message=message)
 
 @app.after_request
 def add_security_headers(response):
-    # Extract nonce if it exists in the response
-    nonce = None
-    if hasattr(response, 'nonce'):
-        nonce = response.nonce
-    else:
-        # Generate a new nonce if one doesn't exist
-        nonce = secrets.token_hex(16)
+    """Add security headers to all responses."""
+    # Generate a new nonce
+    nonce = secrets.token_hex(16)
     
     # Add CSP with nonce
     csp = (
@@ -278,24 +259,43 @@ def add_security_headers(response):
         f"object-src 'none'"
     )
     response.headers['Content-Security-Policy'] = csp
-    
-    # Other security headers...
+    # Other security headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    
     return response
 
-# Error handler that uses templates
 @app.errorhandler(404)
 def page_not_found(e):
+    """Handle 404 errors."""
     try:
         # Try to render the error template
         return render_template('error.html', message="Page not found"), 404
-    except Exception as template_error:
+    except (IOError, OSError, FileNotFoundError, jinja2.exceptions.TemplateError) as template_error:
         # If template rendering fails, return a simple response
-        logger.exception(f"Error rendering template: {str(template_error)}")
+        logger.exception("Error rendering template: %s", str(template_error))
         return "404 - Page not found", 404
 
+
+@app.errorhandler(500)
+def server_error(e):
+    """Handle 500 errors."""
+    logger.error("Server error: %s", str(e))
+    return render_template('error.html', message="Internal server error"), 500
+
+
+@app.errorhandler(400)
+def bad_request(e):
+    """Handle 400 errors."""
+    logger.warning("Bad request: %s", str(e))
+    return render_template('error.html', message="Bad request"), 400
+
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Use a production WSGI server in production environment
+    if os.environ.get('FLASK_ENV') == 'production':
+        # In production, don't use debug mode
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    else:
+        # For development
+        app.run(debug=True)
