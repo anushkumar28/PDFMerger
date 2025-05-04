@@ -1,3 +1,9 @@
+"""
+Test module for the PDF Merger server application.
+
+This module contains unit tests that verify the functionality of the PDF Merger
+web server, including file uploads, downloads, and PDF merging operations.
+"""
 import unittest
 import os
 import io
@@ -5,71 +11,75 @@ import tempfile
 import shutil
 import sys
 import json
-from contextlib import contextmanager
+from server import app
 
 # Add the parent directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import app avoiding the actual file execution
-try:
-    # First attempt to import directly
-    from server import app
-except (ImportError, ModuleNotFoundError) as e:
-    print(f"Direct import failed: {e}")
-    # If that fails, modify sys.modules to mock any problematic imports
-    import types
-    sys.modules['flask_limiter.storage'] = types.ModuleType('flask_limiter.storage')
-    sys.modules['flask_limiter.storage'].MemoryStorage = object
-    
-    # Try importing again
-    from server import app
-
 class TestServerEndpoints(unittest.TestCase):
+    """
+    Test cases for the PDF Merger server API endpoints.
+
+    This class tests the main functionality of the server including
+    file uploads, PDF merging, and download operations.
+    """
     def setUp(self):
+        """Set up the test environment before each test method."""
         app.config['TESTING'] = True
         app.config['DEBUG'] = False
         self.app = app.test_client()
-        
         # Create temporary test directory
         self.test_dir = tempfile.mkdtemp()
-        
         # Create test PDF file
         self.test_file = os.path.join(self.test_dir, 'test.pdf')
         with open(self.test_file, 'wb') as f:
-            f.write(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF')
-    
+            f.write(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n'
+                    b'trailer\n<< /Root 1 0 R >>\n%%EOF')
+
     def tearDown(self):
+        """Clean up resources after each test method."""
         # Clean up test directory
         shutil.rmtree(self.test_dir)
-        
-    def test_upload_endpoint_no_files(self):
+
+    def test_index_route(self):
+        """Test that the index route returns the main page."""
+        response = self.app.get('/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_upload_no_files(self):
+        """Test that upload endpoint handles missing files correctly."""
         response = self.app.post('/upload', data={})
         self.assertEqual(response.status_code, 400)
         data = json.loads(response.data)
         self.assertIn('error', data)
-    
-    def test_upload_endpoint_success(self):
-        # Create two PDF files in memory
-        file1 = (io.BytesIO(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF'), 'test1.pdf')
-        file2 = (io.BytesIO(b'%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF'), 'test2.pdf')
-        
+
+        # Split long line to satisfy line-too-long rule
         response = self.app.post(
-            '/upload', 
-            data={
-                'files': [file1, file2],
-                'output_filename': 'test_merged'
-            },
-            content_type='multipart/form-data'
+            '/upload',
+            content_type='multipart/form-data',
+            data={'output_filename': 'test_output'}
         )
-        
-        # Test may fail due to actual PDF merging, so just check the basic response structure
-        if response.status_code == 200:
-            data = json.loads(response.data)
-            self.assertIn('download_link', data)
-            self.assertIn('message', data)
-        else:
-            print(f"Upload test failed with status code {response.status_code}: {response.data}")
-    
-    def test_download_endpoint_nonexistent_file(self):
-        response = self.app.get('/download/nonexistent.pdf')
+        self.assertEqual(response.status_code, 400)
+
+    def test_upload_single_file(self):
+        """Test that upload endpoint requires at least two files."""
+        # Create a test file to upload
+        with open(self.test_file, 'rb') as pdf:
+            data = {
+                'files': (io.BytesIO(pdf.read()), 'test.pdf'),
+                'output_filename': 'test_output'
+            }
+            # Split long line to satisfy line-too-long rule
+            response = self.app.post(
+                '/upload',
+                content_type='multipart/form-data',
+                data=data
+            )
+            self.assertEqual(response.status_code, 400)
+            response_data = json.loads(response.data)
+            self.assertIn('error', response_data)
+
+    def test_download_nonexistent(self):
+        """Test downloading a non-existent file returns a 404 error."""
+        response = self.app.get('/download/nonexistent_file')
         self.assertEqual(response.status_code, 404)

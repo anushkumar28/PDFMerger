@@ -11,6 +11,7 @@ from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from pypdf import PdfReader, PdfWriter
 import jinja2  # For jinja2.exceptions.TemplateError
+import sys
 
 # Configure logging once
 logging.basicConfig(
@@ -61,10 +62,10 @@ except (OSError, IOError, PermissionError) as e:
 def validate_pdf_file(file):
     """
     Validate that the uploaded file is actually a PDF.
-    
+
     Args:
         file: The uploaded file object
-        
+
     Returns:
         bool: True if file is a valid PDF, False otherwise
     """
@@ -80,10 +81,10 @@ def validate_pdf_file(file):
 def generate_secure_filename(filename):
     """
     Generate a secure filename with a random token.
-    
+
     Args:
         filename (str): Original filename
-        
+
     Returns:
         str: Secure filename with random token
     """
@@ -95,10 +96,10 @@ def generate_secure_filename(filename):
 def is_safe_pdf(file_path):
     """
     Validate if a file is a real PDF and not malicious.
-    
+
     Args:
         file_path (str): Path to the PDF file
-        
+
     Returns:
         bool: True if file is a safe PDF, False otherwise
     """
@@ -134,21 +135,21 @@ def upload_file():
     """Handle PDF file uploads and merging."""
     try:
         logger.info("Files in request: %s", list(request.files.keys()))
-        
+
         if 'files' not in request.files:
             logger.info("No 'files' part in request")
             return jsonify({'error': 'No files part'}), 400
 
         files = request.files.getlist('files')
         logger.info("Number of files received: %d", len(files))
-        
+
         if len(files) < 2:
             logger.info("Need at least 2 files to merge")
             return jsonify({'error': 'Need at least 2 PDF files to merge'}), 400
-        
+
         # Process PDFs entirely in memory
         pdf_readers = []
-        
+
         for file in files:
             if file and file.filename.lower().endswith('.pdf'):
                 # Read file directly into memory
@@ -193,7 +194,7 @@ def upload_file():
         return jsonify({
             'message': 'Files merged successfully',
             'download_link': download_link
-        })    
+        })
     except (ValueError, TypeError, IOError, OSError, PermissionError) as e:
         logger.exception("Error in upload handler: %s", str(e))
         return jsonify({'error': str(e)}), 500
@@ -208,7 +209,7 @@ def download_file(unique_id):
             return jsonify({'error': 'File not found or has expired'}), 404
         # Get the PDF data from memory
         pdf_data = pdf_memory_store[unique_id]['data']
-        filename = pdf_memory_store[unique_id]['filename']  
+        filename = pdf_memory_store[unique_id]['filename']
         # Send file directly from memory
         return send_file(
             pdf_data,
@@ -216,7 +217,7 @@ def download_file(unique_id):
             as_attachment=True,
             mimetype='application/pdf'
         )
-        
+
     except (IOError, OSError, ValueError, TypeError, KeyError, MemoryError) as e:
         logger.exception("Error in download handler: %s", str(e))
         return jsonify({'error': str(e)}), 500
@@ -225,13 +226,13 @@ def download_file(unique_id):
 def cleanup_expired_pdfs():
     """Remove PDFs from memory that are older than 1 hour."""
     current_time = time.time()
-    
+
     # Get list of expired IDs to avoid dictionary size change during iteration
     expired_ids = [
         pdf_id for pdf_id in list(pdf_memory_store.keys())
         if pdf_memory_store[pdf_id].get('expiration', 0) < current_time
     ]
-    
+
     # Remove expired entries
     for pdf_id in expired_ids:
         del pdf_memory_store[pdf_id]
@@ -248,7 +249,7 @@ def add_security_headers(response):
     """Add security headers to all responses."""
     # Generate a new nonce
     nonce = secrets.token_hex(16)
-    
+
     # Add CSP with nonce
     csp = (
         f"default-src 'self'; "
