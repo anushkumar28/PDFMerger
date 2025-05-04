@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger('pdf_merger')
 
 # Flask app configuration
-app = Flask(__name__, 
+app = Flask(__name__,
             static_folder='frontend',
             template_folder='templates')
 CORS(app)
@@ -266,7 +266,7 @@ def add_security_headers(response):
     return response
 
 @app.errorhandler(404)
-def page_not_found(e):
+def page_not_found(_):
     """Handle 404 errors."""
     try:
         # Try to render the error template
