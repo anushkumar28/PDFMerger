@@ -11,7 +11,6 @@ from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from pypdf import PdfReader, PdfWriter
 import jinja2  # For jinja2.exceptions.TemplateError
-import sys
 
 # Configure logging once
 logging.basicConfig(
