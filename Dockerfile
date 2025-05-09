@@ -16,7 +16,7 @@ RUN apk add --no-cache \
     jpeg-dev \
     zlib-dev \
     libressl-dev \
-    libffi-dev  # Required for some cryptography packages
+    libffi-dev
 
 # Build wheels for dependencies
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
@@ -32,8 +32,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=5000 \
     LOG_LEVEL=INFO \
-    MAX_CONTENT_LENGTH=16777216 \
-    FLASK_ENV=production
+    MAX_CONTENT_LENGTH=52428800 \
+    PDF_EXPIRY_SECONDS=86400 \
+    PERSISTENCE_ENABLED=true \
+    PERSISTENCE_INTERVAL=60
 
 # Copy wheels from builder stage and install
 COPY --from=builder /wheels /wheels
@@ -44,26 +46,28 @@ RUN apk add --no-cache \
     libjpeg \
     zlib \
     openssl \
-    wget
+    wget \
+    curl
 
-# Create necessary directories first
-RUN mkdir -p /app/static/uploads /app/static/output /app/templates /app/frontend
-
-# Copy application code - be more specific about what's being copied
-COPY pdfMergerWebsite/server.py /app/
-COPY pdfMergerWebsite/backend/ /app/backend/
-COPY pdfMergerWebsite/frontend/ /app/frontend/
-COPY pdfMergerWebsite/templates/ /app/templates/
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/static/uploads \
+    /app/static/output \
+    /app/templates \
+    /app/frontend \
+    /app/data
 
 # Add a non-root user to run the application
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Set ownership of application files
+# Copy application code
+COPY pdfMergerWebsite/ /app/
+
+# Set ownership of application files and directories
 RUN chown -R appuser:appgroup /app
 
 # Set appropriate permissions
-RUN chmod -R 755 . && \
-    chmod -R 775 static/uploads static/output
+RUN chmod -R 755 /app && \
+    chmod -R 775 /app/static/uploads /app/static/output /app/data
 
 # Switch to non-root user
 USER appuser
@@ -71,9 +75,14 @@ USER appuser
 # Expose port
 EXPOSE 5000
 
+# Verify template and static directories
+RUN ls -la /app/templates || echo "Warning: templates directory empty" && \
+    ls -la /app/static || echo "Warning: static directory empty" && \
+    ls -la /app/frontend || echo "Warning: frontend directory empty"
+
 # Add health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5000/ || exit 1
+  CMD curl -f http://localhost:5000/health || exit 1
 
 # Command to run the application with production server
 CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT --workers=$(( 2 * $(nproc) + 1 )) --timeout=120 --log-level=$LOG_LEVEL server:app"]

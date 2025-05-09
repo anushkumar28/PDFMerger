@@ -325,8 +325,60 @@ def upload_file():
             'message': 'Files merged successfully',
             'download_link': download_link
         })
-    except (ValueError, TypeError, IOError, OSError, PermissionError) as e:
-        logger.exception("Error in upload handler: %s", str(e))
+
+        # Generate a unique ID using UUID for better uniqueness
+        unique_id = str(uuid.uuid4()).replace('-', '')[:8]
+
+        # Make sure the output buffer is at the beginning
+        output_buffer.seek(0)
+
+        # Store in memory with clear variable names
+        current_time = time.time()
+        expiration_time = current_time + PDF_EXPIRY_SECONDS
+
+        # Log the PDF data being stored
+        pdf_size = len(output_buffer.getvalue())
+        logger.info(f"Storing PDF {unique_id} in memory: {pdf_size} bytes, expires at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expiration_time))}")
+
+        # Create full memory store entry
+        pdf_entry = {
+            'data': output_buffer,
+            'filename': output_filename,
+            'expiration': expiration_time,
+            'created_at': current_time,
+            'size_bytes': pdf_size
+        }
+
+        # Store in memory
+        pdf_memory_store[unique_id] = pdf_entry
+
+        # Update stats
+        pdf_stats['total_created'] += 1
+
+        # Log the updated memory store size
+        logger.info(f"Memory store now contains {len(pdf_memory_store)} PDFs")
+
+        # Save to persistence immediately if enabled
+        if PERSISTENCE_ENABLED:
+            try:
+                save_pdf_store()
+                logger.info(f"Saved PDF {unique_id} to persistence")
+            except Exception as e:
+                logger.error(f"Failed to save PDF to persistence: {str(e)}")
+
+        # Return clean download link
+        download_url = f"/download/{unique_id}"
+
+        logger.info(f"Upload successful. Created PDF with ID: {unique_id}, download URL: {download_url}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Files merged successfully',
+            'download_url': download_url
+        })
+
+    except Exception as e:
+        logger.exception(f"Error in upload handler: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/recover/<pdf_id>')
@@ -416,70 +468,78 @@ def download_not_found(pdf_id):
 def download_file(unique_id):
     """Serve the merged PDF file for download."""
     try:
-        # Strip any file extension that might have been appended
-        original_id = unique_id
+        # Clean up any file extension if present
         unique_id = unique_id.split('.')[0]
-
-        if original_id != unique_id:
-            logger.info(f"Stripped file extension from ID: {original_id} -> {unique_id}")
-
-        # Log more details about the request
         logger.info(f"Download request for PDF ID: {unique_id}")
-        logger.info(f"Request headers: {dict(request.headers)}")
-        logger.info(f"Memory store has {len(pdf_memory_store)} PDFs")
 
-        # Run the PDF store status logger
-        log_pdf_store_status()
+        # Step 1: Try to get directly from memory
+        pdf_entry = pdf_memory_store.get(unique_id)
 
-        # Check if the ID exists in our in-memory store
-        if unique_id not in pdf_memory_store:
-            logger.error(f"PDF with ID {unique_id} not found in memory store")
+        # Step 2: If not in memory, try to recover from persistence
+        if not pdf_entry and PERSISTENCE_ENABLED:
+            logger.info(f"PDF {unique_id} not found in memory, attempting recovery from persistence")
+            try:
+                recovered = recover_from_persistence(unique_id)
+                if recovered:
+                    logger.info(f"Successfully recovered PDF {unique_id} from persistence")
+                    pdf_entry = pdf_memory_store.get(unique_id)
+                else:
+                    logger.warning(f"Could not recover PDF {unique_id} from persistence")
+            except Exception as e:
+                logger.error(f"Error recovering PDF from persistence: {str(e)}")
 
-            # Log the most similar IDs to help diagnose potential typos
-            if pdf_memory_store:
-                closest_matches = sorted(pdf_memory_store.keys(),
-                                         key=lambda x: sum(a==b for a,b in zip(x, unique_id)))[:3]
-                logger.info(f"Closest matching IDs: {', '.join(closest_matches)}")
+        # Step 3: If still not found, return a user-friendly error
+        if not pdf_entry:
+            logger.error(f"PDF with ID {unique_id} not found in memory store or persistence")
+            return render_template('pdf_not_found.html', pdf_id=unique_id)
 
-            # Automatically try recovery
-            logger.info(f"Attempting recovery for PDF ID: {unique_id}")
-            return redirect(f"/recover/{unique_id}")
+        # Step 4: Check if PDF has expired
+        current_time = time.time()
+        if pdf_entry['expiration'] < current_time:
+            logger.warning(f"PDF {unique_id} has expired, expired {current_time - pdf_entry['expiration']:.1f} seconds ago")
+            # Remove from memory store
+            del pdf_memory_store[unique_id]
+            pdf_stats['total_expired'] += 1
+            return render_template('pdf_expired.html', pdf_id=unique_id)
 
-        # Get the PDF data from memory
-        pdf_data = pdf_memory_store[unique_id]['data']
-        filename = pdf_memory_store[unique_id]['filename']
+        # Step 5: Get data from the entry
+        pdf_data = pdf_entry['data']
+        filename = pdf_entry['filename']
 
-        # Check the PDF data integrity
+        # Step 6: Validate PDF data
         if not hasattr(pdf_data, 'getvalue'):
             logger.error(f"PDF data for ID {unique_id} is not a BytesIO object: {type(pdf_data)}")
             return jsonify({'error': 'Invalid PDF data format in memory'}), 500
 
-        # Log the size of the PDF
         pdf_size = len(pdf_data.getvalue())
-        logger.info(f"Serving PDF: {filename}, size: {pdf_size} bytes")
-
         if pdf_size == 0:
             logger.error(f"PDF with ID {unique_id} has zero bytes")
             return jsonify({'error': 'PDF file is empty'}), 500
 
-        # Reset buffer position to beginning
+        # Step 7: Reset buffer position
         pdf_data.seek(0)
 
-        # Return file with proper headers
+        # Step 8: Create response with proper headers
+        logger.info(f"Serving PDF {unique_id}: {filename}, {pdf_size} bytes")
         response = send_file(
             pdf_data,
             mimetype='application/pdf',
-            as_attachment=True,
             download_name=filename,
-            etag=unique_id
+            as_attachment=True
         )
 
-        logger.info(f"Successfully sent PDF: {filename}")
+        # Step 9: Add custom headers to prevent caching issues
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        response.headers['X-PDF-ID'] = unique_id
+
+        logger.info(f"Successfully serving PDF {unique_id}")
         return response
 
     except Exception as e:
         logger.exception(f"Error in download handler: {str(e)}")
-        # Rest of your error handling code...
+        return render_template('error.html', message=f"Error downloading file: {str(e)}"), 500
 
 @app.before_request
 def cleanup_expired_pdfs():
@@ -582,29 +642,81 @@ def save_pdf_store():
         return
 
     try:
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(PERSISTENCE_FILE), exist_ok=True)
+
         # Create a copy of the store with serializable data
         serializable_store = {}
         for pdf_id, pdf_data in pdf_memory_store.items():
+            # Skip if already expired
+            if pdf_data['expiration'] < time.time():
+                continue
+
             # Convert BytesIO to base64 string for serialization
             pdf_bytes = pdf_data['data'].getvalue()
             serializable_store[pdf_id] = {
                 'data_base64': base64.b64encode(pdf_bytes).decode('utf-8'),
                 'filename': pdf_data['filename'],
-                'expiration': pdf_data['expiration']
+                'expiration': pdf_data['expiration'],
+                'created_at': pdf_data.get('created_at', time.time()),
+                'size_bytes': len(pdf_bytes)
             }
 
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(PERSISTENCE_FILE), exist_ok=True)
+        # Write to a temporary file first to avoid corruption
+        temp_file = PERSISTENCE_FILE + '.tmp'
+        with open(temp_file, 'w') as f:
+            json.dump(serializable_store, f)
 
-        with open(PERSISTENCE_FILE, 'w', encoding='utf-8') as file_handle:
-            json.dump(serializable_store, file_handle, indent=2)  # Added indentation for better readability
+        # Rename to the actual file (atomic operation)
+        os.replace(temp_file, PERSISTENCE_FILE)
 
-        logger.info("Successfully saved PDF store to disk (%d items)", len(pdf_memory_store))
-    except (IOError, OSError, ValueError, TypeError, KeyError, base64.binascii.Error, AttributeError) as e:
-        logger.error("Failed to save PDF store: %s", str(e))
-    # Schedule the next save
-    if PERSISTENCE_ENABLED:
-        threading.Timer(PERSISTENCE_INTERVAL, save_pdf_store).start()
+        logger.info(f"Successfully saved PDF store to disk ({len(serializable_store)} items)")
+    except Exception as e:
+        logger.error(f"Failed to save PDF store: {str(e)}")
+
+def recover_from_persistence(pdf_id):
+    """Try to recover a specific PDF from persistence storage."""
+    if not PERSISTENCE_ENABLED or not os.path.exists(PERSISTENCE_FILE):
+        logger.warning(f"Cannot recover PDF {pdf_id}: persistence disabled or file not found")
+        return False
+
+    try:
+        with open(PERSISTENCE_FILE, 'r') as f:
+            serializable_store = json.load(f)
+
+        # Check if PDF exists in the persistence file
+        if pdf_id not in serializable_store:
+            logger.warning(f"PDF {pdf_id} not found in persistence file")
+            return False
+
+        pdf_data = serializable_store[pdf_id]
+
+        # Check if it's expired
+        if pdf_data['expiration'] < time.time():
+            logger.warning(f"PDF {pdf_id} is expired in persistence file")
+            return False
+
+        # Recover the PDF data
+        pdf_bytes = base64.b64decode(pdf_data['data_base64'])
+        pdf_buffer = io.BytesIO(pdf_bytes)
+        pdf_buffer.seek(0)
+
+        # Add back to memory store
+        pdf_memory_store[pdf_id] = {
+            'data': pdf_buffer,
+            'filename': pdf_data['filename'],
+            'expiration': pdf_data['expiration'],
+            'created_at': pdf_data.get('created_at', time.time() - 3600),
+            'size_bytes': len(pdf_bytes),
+            'recovered': True
+        }
+
+        logger.info(f"Successfully recovered PDF {pdf_id} from persistence")
+        return True
+
+    except Exception as e:
+        logger.exception(f"Error recovering PDF {pdf_id} from persistence: {str(e)}")
+        return False
 
 def load_pdf_store():
     """Load the PDF store from disk."""
@@ -717,6 +829,35 @@ def debug_memory_store():
         'pdf_stats': pdf_stats
     })
 
+# Add this debug route to help us inspect what's going on
+@app.route('/debug/pdf-store')
+def debug_pdf_store():
+    """Debug endpoint to inspect the pdf_memory_store."""
+    # Only allow in development mode
+    if not app.debug:
+        return jsonify({"error": "Debugging only allowed in development mode"}), 403
+
+    result = {
+        "memory_store_size": len(pdf_memory_store),
+        "memory_store_keys": list(pdf_memory_store.keys()),
+        "pdf_stats": pdf_stats,
+        "persistence_enabled": PERSISTENCE_ENABLED,
+        "persistence_file": PERSISTENCE_FILE,
+        "persistence_file_exists": os.path.exists(PERSISTENCE_FILE)
+    }
+
+    # Try to load the persistence file
+    if PERSISTENCE_ENABLED and os.path.exists(PERSISTENCE_FILE):
+        try:
+            with open(PERSISTENCE_FILE, 'r') as f:
+                persistence_data = json.load(f)
+            result["persistence_store_size"] = len(persistence_data)
+            result["persistence_store_keys"] = list(persistence_data.keys())
+        except Exception as e:
+            result["persistence_error"] = str(e)
+
+    return jsonify(result)
+
 # Add this function to your server.py file for improved PDF tracking
 def log_pdf_store_status():
     """Log detailed information about the PDF memory store."""
@@ -776,6 +917,55 @@ def health_check():
             'status': 'unhealthy',
             'error': str(e)
         }), 500
+# Initialize persistence mechanism
+if PERSISTENCE_ENABLED:
+    # Load existing PDFs at startup
+    try:
+        logger.info(f"Loading persistent PDF store from {PERSISTENCE_FILE}")
+        if os.path.exists(PERSISTENCE_FILE):
+            with open(PERSISTENCE_FILE, 'r') as f:
+                serializable_store = json.load(f)
+
+            loaded_count = 0
+            expired_count = 0
+            current_time = time.time()
+
+            for pdf_id, pdf_data in serializable_store.items():
+                # Skip expired entries
+                if pdf_data['expiration'] < current_time:
+                    expired_count += 1
+                    continue
+
+                # Convert base64 back to BytesIO
+                pdf_bytes = base64.b64decode(pdf_data['data_base64'])
+                pdf_buffer = io.BytesIO(pdf_bytes)
+                pdf_buffer.seek(0)
+
+                pdf_memory_store[pdf_id] = {
+                    'data': pdf_buffer,
+                    'filename': pdf_data['filename'],
+                    'expiration': pdf_data['expiration'],
+                    'created_at': pdf_data.get('created_at', time.time() - 3600),
+                    'size_bytes': len(pdf_bytes),
+                    'restored': True
+                }
+                loaded_count += 1
+
+            logger.info(f"Loaded {loaded_count} PDFs from persistence ({expired_count} expired entries skipped)")
+        else:
+            logger.info("No persistence file found, starting with empty PDF store")
+    except Exception as e:
+        logger.error(f"Error loading PDF store: {str(e)}")
+
+    # Start the periodic save timer
+    save_interval = int(os.environ.get('PERSISTENCE_INTERVAL', 60))
+    logger.info(f"Starting persistence timer with {save_interval} second interval")
+
+    def periodic_save():
+        save_pdf_store()
+        threading.Timer(save_interval, periodic_save).start()
+
+    threading.Timer(save_interval, periodic_save).start()
 
 if __name__ == '__main__':
     # Use environment variables for host and port
