@@ -1,0 +1,8 @@
+flask==2.2.3
+flask-cors==3.0.10
+flask-limiter==3.3.1
+gunicorn==21.2.0
+Jinja2==3.1.2
+pypdf==3.15.1
+Werkzeug==2.3.6
+pycryptodome==3.19.0

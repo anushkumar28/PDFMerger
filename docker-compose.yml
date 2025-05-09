@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent volumes
+      - ./pdfMergerWebsite/static:/app/static
+      - ./pdfMergerWebsite/templates:/app/templates
+      - ./pdfMergerWebsite/frontend:/app/frontend
+      - pdf_data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=server.py
+      - PDF_EXPIRY_SECONDS=86400  # 24 hours
+      - PERSISTENCE_ENABLED=true
+      - PERSISTENCE_INTERVAL=30
+      - LOG_LEVEL=DEBUG
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pdf_data:
+    driver: local
