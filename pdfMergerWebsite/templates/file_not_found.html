@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error - PDF Merger</title>
+    <title>File Not Found - PDF Merger</title>
     <style nonce="{{ csp_nonce }}">
         body {
             font-family: Arial, sans-serif;
@@ -32,12 +32,24 @@
         }
         h1 {
             margin-top: 0;
+            color: #2b2d42;
+        }
+        .message {
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        .file-id {
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            color: #6c757d;
         }
         .btn {
             display: inline-block;
             background-color: #4361ee;
             color: white;
-            padding: 10px 15px;
+            padding: 10px 20px;
             border-radius: 4px;
             text-decoration: none;
             margin-top: 1rem;
@@ -46,18 +58,29 @@
         .btn:hover {
             background-color: #3a56d4;
         }
+        .info {
+            margin-top: 1.5rem;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
     </style>
-
-    <script nonce="{{ csp_nonce }}">
-        // Your JavaScript here
-    </script>
 </head>
 <body>
     <div class="error-container">
         <div class="error-icon">⚠️</div>
-        <h1>Error</h1>
-        <p>{{ message }}</p>
+        <h1>File Not Found</h1>
+        <div class="message">
+            <p>{{ message }}</p>
+            <p>File ID: <span class="file-id">{{ file_id }}</span></p>
+        </div>
+        <div class="info">
+            <p>PDF files are automatically deleted after one hour for security and privacy reasons.</p>
+        </div>
         <a href="/" class="btn">Return to Home</a>
     </div>
+
+    <script nonce="{{ csp_nonce }}">
+        // Your JavaScript here
+    </script>
 </body>
 </html>

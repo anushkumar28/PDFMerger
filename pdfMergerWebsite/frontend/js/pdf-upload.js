@@ -6,28 +6,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileListContainer = document.createElement('div');
     fileListContainer.className = 'file-list-container';
     uploadForm.after(fileListContainer);
-    
+
     // Update file list when files are selected
     fileInput.addEventListener('change', function() {
         displaySelectedFiles(this.files);
     });
-    
+
     function displaySelectedFiles(files) {
         if (files.length === 0) {
             fileListContainer.innerHTML = '';
             return;
         }
-        
+
         let html = `
             <h3>Selected Files <span class="file-count">${files.length}</span></h3>
             <ul class="file-list">
         `;
-        
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const fileSize = formatFileSize(file.size);
             const fileExtension = file.name.split('.').pop().toLowerCase();
-            
+
             html += `
                 <li class="file-item" tabindex="0">
                     <div class="file-icon pdf-icon">
@@ -40,61 +40,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 </li>
             `;
         }
-        
+
         html += '</ul>';
         fileListContainer.innerHTML = html;
     }
-    
+
     function formatFileSize(bytes) {
         if (bytes === 0) return '0 Bytes';
-        
+
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(1024));
         return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
     }
-    
+
     // Validate files before upload
     function validateFiles(files) {
         const errors = [];
         const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-        
+
         if (files.length < 2) {
             errors.push('Please select at least two PDF files.');
             return errors;
         }
-        
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            
+
             // Check file type
             if (!file.type || file.type !== 'application/pdf') {
                 errors.push(`"${file.name}" is not a PDF file.`);
             }
-            
+
             // Check file size
             if (file.size > MAX_FILE_SIZE) {
                 errors.push(`"${file.name}" exceeds the 10MB file size limit.`);
             }
-            
+
             // Check for empty files
             if (file.size === 0) {
                 errors.push(`"${file.name}" is empty.`);
             }
         }
-        
+
         return errors;
     }
-    
+
     uploadForm.addEventListener('submit', function(event) {
         event.preventDefault();
         const files = fileInput.files;
-        
+
         const validationErrors = validateFiles(files);
         if (validationErrors.length > 0) {
             showNotification(validationErrors.join('<br>'), 'error');
             return;
         }
-        
+
         // Create loading indicator
         resultDiv.innerHTML = `
             <div class="loading-container">
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function() {
         for (let i = 0; i < files.length; i++) {
             formData.append('files', files[i]);
         }
-        
+
         // Add output filename if provided
         if (filenameInput && filenameInput.value.trim()) {
             formData.append('output_filename', filenameInput.value.trim());
@@ -138,28 +138,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     </a>
                 </div>
             `;
-            
+
             // Track successful merge event
             trackEvent('PDF', 'Merge', 'Success');
-            
+
             // Clear file input for next merge
             fileInput.value = '';
             fileListContainer.innerHTML = '';
-            
+
             // Scroll to result
             resultDiv.scrollIntoView({ behavior: 'smooth' });
         })
         .catch(error => {
             console.error('Error:', error);
-            
+
             // Handle specific errors
             handleApiError(error);
-            
+
             // Track error event
             trackEvent('PDF', 'Merge', 'Error: ' + error.message);
         });
     });
-    
+
     // More sophisticated error handling
     function handleApiError(error) {
         // Check for specific error types
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
     }
-    
+
     function showNotification(message, type) {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
@@ -191,21 +191,21 @@ document.addEventListener('DOMContentLoaded', function() {
             <button aria-label="Close notification" class="notification-close" onclick="this.parentElement.remove()">×</button>
         `;
         document.body.appendChild(notification);
-        
+
         // Auto remove after 5 seconds
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 500);
         }, 5000);
     }
-    
+
     // Simple analytics tracking
     function trackEvent(category, action, label) {
         if (window.localStorage.getItem('allow_analytics') === 'true') {
             console.log('Tracked:', category, action, label);
         }
     }
-    
+
     // Keyboard navigation
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && document.activeElement.classList.contains('file-item')) {
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.activeElement.click();
         }
     });
-    
+
     // Lazy load the Features section
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
@@ -227,16 +227,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.feature-card').forEach(card => {
         observer.observe(card);
     });
-    
+
     // Theme toggle functionality
     const themeToggle = document.getElementById('theme-toggle');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     // Add transition class to body after page load to prevent flash
     setTimeout(() => {
         document.body.classList.add('theme-transition');
     }, 100);
-    
+
     // Check for saved theme preference or use OS preference
     const getCurrentTheme = () => {
         const savedTheme = localStorage.getItem('theme');
@@ -245,35 +245,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return prefersDarkScheme.matches ? 'dark' : 'light';
     };
-    
+
     // Apply the current theme
     const applyTheme = (theme) => {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
     };
-    
+
     // Initialize theme
     const currentTheme = getCurrentTheme();
     applyTheme(currentTheme);
-    
+
     // Toggle theme when button is clicked
     themeToggle.addEventListener('click', () => {
         const newTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
         applyTheme(newTheme);
-        
+
         // Add animation effect
         themeToggle.classList.add('rotate');
         setTimeout(() => {
             themeToggle.classList.remove('rotate');
         }, 500);
     });
-    
+
     // Listen for OS theme changes
     prefersDarkScheme.addEventListener('change', (e) => {
         const newTheme = e.matches ? 'dark' : 'light';
         applyTheme(newTheme);
     });
-    
+
     // Add client-side validation
     uploadForm.addEventListener('submit', function(event) {
         // Prevent form submission if validation fails
@@ -282,26 +282,26 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
     });
-    
+
     function validateFiles() {
         const files = fileInput.files;
-        
+
         // Check if files exist
         if (!files || files.length < 2) {
             showError('Please select at least two PDF files.');
             return false;
         }
-        
+
         // Check each file
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            
+
             // Check file type
             if (file.type !== 'application/pdf') {
                 showError(`"${file.name}" is not a PDF file.`);
                 return false;
             }
-            
+
             // Check file size (10MB limit)
             const maxSize = 10 * 1024 * 1024;
             if (file.size > maxSize) {
@@ -309,18 +309,45 @@ document.addEventListener('DOMContentLoaded', function() {
                 return false;
             }
         }
-        
+
         return true;
     }
-    
+
     function showError(message) {
         // Display error message to user
         const errorElement = document.createElement('div');
         errorElement.className = 'error-message';
         errorElement.textContent = message;
-        
+
         const result = document.getElementById('result');
         result.innerHTML = '';
         result.appendChild(errorElement);
+    }
+
+    // In your JavaScript file that handles the upload response
+
+    function handleUploadResponse(response) {
+        if (response.success) {
+            // Get the clean download URL from the server
+            const downloadUrl = response.download_url;
+
+            // Create a clean link without appending .html or other extensions
+            const downloadLink = document.createElement('a');
+            downloadLink.href = downloadUrl;
+            downloadLink.textContent = 'Download your merged PDF';
+            downloadLink.className = 'download-button';
+
+            // Don't set download attribute to avoid browser modification of the URL
+            // Just navigate to the URL and let the server handle it
+
+            // Add to the page
+            document.getElementById('download-container').innerHTML = '';
+            document.getElementById('download-container').appendChild(downloadLink);
+
+            // Optionally trigger download automatically
+            // downloadLink.click();
+        } else {
+            showError(response.error || 'An error occurred during file processing.');
+        }
     }
 });
