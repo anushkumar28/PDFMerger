@@ -35,7 +35,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MAX_CONTENT_LENGTH=52428800 \
     PDF_EXPIRY_SECONDS=86400 \
     PERSISTENCE_ENABLED=true \
-    PERSISTENCE_INTERVAL=60
+    PERSISTENCE_INTERVAL=60 \
+    FLASK_DEBUG=0
 
 # Copy wheels from builder stage and install
 COPY --from=builder /wheels /wheels

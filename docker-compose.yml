@@ -14,7 +14,7 @@ services:
       - ./pdfMergerWebsite/frontend:/app/frontend
       - pdf_data:/app/data
     environment:
-      - FLASK_ENV=development
+      - FLASK_ENV=production
       - FLASK_APP=server.py
       - PDF_EXPIRY_SECONDS=86400  # 24 hours
       - PERSISTENCE_ENABLED=true

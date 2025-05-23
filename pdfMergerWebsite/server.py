@@ -258,6 +258,12 @@ def upload_file():
                 logger.debug("Processing file: %s, content type: %s, size: %d bytes",
                             file.filename, file.content_type, file.content_length or 0)
 
+                # Validate the file type before reading
+                if not validate_pdf_file(file):
+                    logger.error("Invalid file type: %s. Not a true PDF.", file.filename)
+                    return jsonify({'error': f'File {file.filename} is not a valid PDF.'}), 400
+                # file.seek(0) # validate_pdf_file already does this.
+
                 # Read file directly into memory
                 try:
                     pdf_content = io.BytesIO(file.read())
@@ -587,8 +593,8 @@ def add_security_headers(response):
     # Add CSP with nonce and allow unsafe-inline for styles and event handlers
     csp = (
         f"default-src 'self'; "
-        f"script-src 'self' 'nonce-{nonce}' 'unsafe-inline' 'unsafe-eval'; "
-        f"style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'nonce-{nonce}'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' https://cdnjs.cloudflare.com 'nonce-{nonce}'; "
         f"font-src 'self' https://cdnjs.cloudflare.com; "
         f"img-src 'self' data:; "
         f"connect-src 'self'; "
@@ -774,6 +780,8 @@ def debug_pdfs():
 @app.route('/api/debug/csp')
 def debug_csp():
     """Debug endpoint to check CSP configuration."""
+    if not app.debug:
+        return jsonify({"error": "Debug mode not enabled"}), 403
     nonce = getattr(g, 'csp_nonce', secrets.token_hex(16))
     return f"""
     <!DOCTYPE html>
